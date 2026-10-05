@@ -1,0 +1,6 @@
+# Same line endings on Windows and macOS checkouts.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+*.ttf binary
