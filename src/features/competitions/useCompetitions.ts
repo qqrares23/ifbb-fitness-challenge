@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createCategory, deleteCategory, updateCategory } from "@/db/categories";
+import { addCategoriesFromLibrary, deleteCategory } from "@/db/categories";
 import {
   createCompetition,
   deleteCompetition,
@@ -56,10 +56,10 @@ export function useStationMutations() {
 }
 
 export function useCategoryMutations() {
+  const count = (n: number) => `${n} categor${n === 1 ? "y" : "ies"}`;
   return {
-    create: useDbMutation(createCategory, { invalidates, success: (c) => `"${c.name.trim()}" added.` }),
-    update: useDbMutation(updateCategory, { invalidates, success: (c) => `"${c.name.trim()}" saved.` }),
-    remove: useDbMutation(deleteCategory, { invalidates, success: "Category deleted." }),
+    addFromLibrary: useDbMutation(addCategoriesFromLibrary, { invalidates, success: ({ presetIds }) => `${count(presetIds.length)} added.` }),
+    remove: useDbMutation(deleteCategory, { invalidates, success: "Category removed from the competition." }),
   };
 }
 

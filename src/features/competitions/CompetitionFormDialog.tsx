@@ -7,7 +7,8 @@ import type { Competition, CompetitionKind, NewCompetitionInput } from "@/db/com
 import { todayIso } from "@/lib/dates";
 import { COMPETITION_KIND_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
-import { COMPETITION_KIND_ICONS } from "./CompetitionBadges";
+import { useIconAnimation } from "@/components/icons/animated";
+import { ANIMATED_KIND_ICONS } from "./CompetitionBadges";
 import { useCompetitionMutations } from "./useCompetitions";
 
 const KIND_DESCRIPTIONS: Record<CompetitionKind, string> = {
@@ -66,26 +67,9 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
       {!competition && (
         <fieldset className="grid grid-cols-2 gap-3">
           <legend className="mb-1.5 text-sm font-medium">Challenge</legend>
-          {(Object.keys(COMPETITION_KIND_LABELS) as CompetitionKind[]).map((kind) => {
-            const Icon = COMPETITION_KIND_ICONS[kind];
-            const selected = values.kind === kind;
-            return (
-              <button
-                key={kind}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => set("kind", kind)}
-                className={cn(
-                  "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
-                  selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "bg-card",
-                )}
-              >
-                <Icon className={cn("size-5", selected ? "text-primary" : "text-muted-foreground")} />
-                <span className="font-medium">{COMPETITION_KIND_LABELS[kind]}</span>
-                <span className="text-xs text-muted-foreground">{KIND_DESCRIPTIONS[kind]}</span>
-              </button>
-            );
-          })}
+          {(Object.keys(COMPETITION_KIND_LABELS) as CompetitionKind[]).map((kind) => (
+            <KindOption key={kind} kind={kind} selected={values.kind === kind} onSelect={() => set("kind", kind)} />
+          ))}
         </fieldset>
       )}
       <FormField id="competition-name" label="Name" error={errors.name}>
@@ -102,5 +86,26 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
       <p className="text-xs text-muted-foreground">Athlete ages for categories are counted as this date's year minus the year of birth.</p>
       <FormActions onCancel={onDone} submitLabel={competition ? "Save changes" : "Create competition"} saving={create.isPending || update.isPending} />
     </form>
+  );
+}
+
+function KindOption({ kind, selected, onSelect }: { kind: CompetitionKind; selected: boolean; onSelect: () => void }) {
+  const Icon = ANIMATED_KIND_ICONS[kind];
+  const { ref, triggers } = useIconAnimation();
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      {...triggers}
+      className={cn(
+        "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+        selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "bg-card",
+      )}
+    >
+      <Icon ref={ref} size={22} className={selected ? "text-primary" : "text-muted-foreground"} />
+      <span className="font-medium">{COMPETITION_KIND_LABELS[kind]}</span>
+      <span className="text-xs text-muted-foreground">{KIND_DESCRIPTIONS[kind]}</span>
+    </button>
   );
 }

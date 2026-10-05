@@ -1,6 +1,7 @@
 import { createHashRouter, Navigate } from "react-router";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AthletesPage } from "@/features/athletes/AthletesPage";
+import { CategoriesPage } from "@/features/categories/CategoriesPage";
 import { ExercisesPage } from "@/features/exercises/ExercisesPage";
 import { CompetitionsPage } from "@/features/competitions/CompetitionsPage";
 import { CompetitionDetailPage } from "@/features/competitions/detail/CompetitionDetailPage";
@@ -15,6 +16,7 @@ export const router = createHashRouter([
       { path: "competitions", element: <CompetitionsPage /> },
       { path: "competitions/:competitionId", element: <CompetitionDetailPage /> },
       { path: "athletes", element: <AthletesPage /> },
+      { path: "categories", element: <CategoriesPage /> },
       { path: "exercises", element: <ExercisesPage /> },
     ],
   },

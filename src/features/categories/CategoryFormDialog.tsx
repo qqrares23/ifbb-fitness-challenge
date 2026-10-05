@@ -3,29 +3,28 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import { FormField } from "@/components/shared/FormField";
-import type { Category } from "@/db/categories";
+import type { CategoryPreset } from "@/db/categoryPresets";
 import type { CategoryGender } from "@/engine";
 import { CATEGORY_GENDER_LABELS } from "@/lib/labels";
-import { useCategoryMutations } from "../useCompetitions";
+import { useCategoryPresetMutations } from "./useCategoryPresets";
 import { validateCategory, type CategoryFormValues } from "./validateCategory";
 
 interface CategoryFormDialogProps {
-  competitionId: number;
   /** null = create a new category. */
-  category: Category | null;
+  category: CategoryPreset | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function CategoryFormDialog({ competitionId, category, open, onOpenChange }: CategoryFormDialogProps) {
+export function CategoryFormDialog({ category, open, onOpenChange }: CategoryFormDialogProps) {
   return (
     <FormDialog title={category ? "Edit category" : "Add category"} open={open} onOpenChange={onOpenChange} formKey={category?.id ?? "new"}>
-      <CategoryForm competitionId={competitionId} category={category} onDone={() => onOpenChange(false)} />
+      <CategoryForm category={category} onDone={() => onOpenChange(false)} />
     </FormDialog>
   );
 }
 
-function toForm(category: Category | null): CategoryFormValues {
+function toForm(category: CategoryPreset | null): CategoryFormValues {
   return {
     name: category?.name ?? "",
     gender: category?.gender ?? "mixed",
@@ -34,8 +33,8 @@ function toForm(category: Category | null): CategoryFormValues {
   };
 }
 
-function CategoryForm({ competitionId, category, onDone }: { competitionId: number; category: Category | null; onDone: () => void }) {
-  const { create, update } = useCategoryMutations();
+function CategoryForm({ category, onDone }: { category: CategoryPreset | null; onDone: () => void }) {
+  const { create, update } = useCategoryPresetMutations();
   const [values, setValues] = useState(() => toForm(category));
   const [submitted, setSubmitted] = useState(false);
   const validation = validateCategory(values);
@@ -49,7 +48,7 @@ function CategoryForm({ competitionId, category, onDone }: { competitionId: numb
     if (!validation.ok) return;
     const value = validation.value;
     void saveAndClose(
-      () => (category ? update.mutateAsync({ ...value, id: category.id }) : create.mutateAsync({ ...value, competitionId })),
+      () => (category ? update.mutateAsync({ ...value, id: category.id }) : create.mutateAsync(value)),
       onDone,
     );
   }

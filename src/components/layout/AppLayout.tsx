@@ -1,18 +1,23 @@
 import { NavLink, Outlet, useLocation } from "react-router";
-import { Dumbbell, Trophy, Users, type LucideIcon } from "lucide-react";
 import ifbbLogo from "@/assets/ifbb-logo.png";
+import { useIconAnimation, type AnimatedIcon } from "@/components/icons/animated";
+import { BicepsFlexedIcon } from "@/components/icons/biceps-flexed";
+import { CalendarCheckIcon } from "@/components/icons/calendar-check";
+import { LayersIcon } from "@/components/icons/layers";
+import { UsersIcon } from "@/components/icons/users";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
   to: string;
   label: string;
-  icon: LucideIcon;
+  icon: AnimatedIcon;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/competitions", label: "Competitions", icon: Trophy },
-  { to: "/athletes", label: "Athletes", icon: Users },
-  { to: "/exercises", label: "Exercises", icon: Dumbbell },
+  { to: "/competitions", label: "Competitions", icon: CalendarCheckIcon },
+  { to: "/athletes", label: "Athletes", icon: UsersIcon },
+  { to: "/categories", label: "Categories", icon: LayersIcon },
+  { to: "/exercises", label: "Exercises", icon: BicepsFlexedIcon },
 ];
 
 export function AppLayout() {
@@ -30,32 +35,8 @@ export function AppLayout() {
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-3">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                cn(
-                  "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                    : "text-muted-foreground hover:translate-x-0.5 hover:bg-muted hover:text-foreground",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span
-                    className={cn(
-                      "absolute top-1/2 left-0 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gold transition-transform duration-300",
-                      isActive ? "scale-y-100" : "scale-y-0",
-                    )}
-                  />
-                  <Icon className="size-4 transition-transform duration-200 group-hover:scale-110" />
-                  {label}
-                </>
-              )}
-            </NavLink>
+          {NAV_ITEMS.map((item) => (
+            <NavItemLink key={item.to} {...item} />
           ))}
         </nav>
         <p className="border-t px-5 py-3 text-[11px] text-muted-foreground">Data is stored on this computer only.</p>
@@ -66,5 +47,36 @@ export function AppLayout() {
         </div>
       </main>
     </div>
+  );
+}
+
+function NavItemLink({ to, label, icon: Icon }: NavItem) {
+  const { ref, triggers } = useIconAnimation();
+  return (
+    <NavLink
+      to={to}
+      {...triggers}
+      className={({ isActive }) =>
+        cn(
+          "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+          isActive
+            ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+            : "text-muted-foreground hover:translate-x-0.5 hover:bg-muted hover:text-foreground",
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span
+            className={cn(
+              "absolute top-1/2 left-0 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gold transition-transform duration-300",
+              isActive ? "scale-y-100" : "scale-y-0",
+            )}
+          />
+          <Icon ref={ref} size={18} />
+          {label}
+        </>
+      )}
+    </NavLink>
   );
 }

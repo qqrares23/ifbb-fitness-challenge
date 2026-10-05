@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Trash2, UserPlus, Users } from "lucide-react";
+import { Trash2, Users } from "lucide-react";
+import { UserPlusIcon } from "@/components/icons/user-plus";
+import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,9 +33,9 @@ export function EntriesPanel({ setup, locked }: EntriesPanelProps) {
   }
 
   const addButton = !locked && (
-    <Button onClick={() => setAdding(true)}>
-      <UserPlus /> Enter athletes
-    </Button>
+    <AnimatedButton icon={UserPlusIcon} onClick={() => setAdding(true)}>
+      Enter athletes
+    </AnimatedButton>
   );
 
   return (

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { DownloadIcon } from "@/components/icons/download";
+import { FileTextIcon } from "@/components/icons/file-text";
+import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { ExportFormat } from "@/export/exportResults";
 import { errorMessage } from "@/lib/errors";
@@ -29,12 +30,12 @@ export function ExportButtons({ setup, results }: ExportButtonsProps) {
 
   return (
     <>
-      <Button variant="outline" disabled={busy !== null} onClick={() => run("csv")}>
-        {busy === "csv" ? <Loader2 className="animate-spin" /> : <FileSpreadsheet />} Export CSV
-      </Button>
-      <Button disabled={busy !== null} onClick={() => run("pdf")}>
-        {busy === "pdf" ? <Loader2 className="animate-spin" /> : <FileText />} Export PDF
-      </Button>
+      <AnimatedButton icon={DownloadIcon} variant="outline" disabled={busy !== null} onClick={() => run("csv")}>
+        {busy === "csv" ? "Exporting…" : "Export CSV"}
+      </AnimatedButton>
+      <AnimatedButton icon={FileTextIcon} disabled={busy !== null} onClick={() => run("pdf")}>
+        {busy === "pdf" ? "Exporting…" : "Export PDF"}
+      </AnimatedButton>
     </>
   );
 }

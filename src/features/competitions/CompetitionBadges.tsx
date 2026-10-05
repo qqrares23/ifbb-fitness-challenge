@@ -1,4 +1,7 @@
-import { Timer, Trophy, type LucideIcon } from "lucide-react";
+import { BicepsFlexed, Timer } from "lucide-react";
+import type { AnimatedIcon } from "@/components/icons/animated";
+import { BicepsFlexedIcon } from "@/components/icons/biceps-flexed";
+import { TimerIcon } from "@/components/icons/timer";
 import { Badge } from "@/components/ui/badge";
 import type { CompetitionKind, CompetitionStatus } from "@/db/competitions";
 import { COMPETITION_KIND_LABELS } from "@/lib/labels";
@@ -19,10 +22,12 @@ export function CompetitionStatusBadge({ status }: { status: CompetitionStatus }
   );
 }
 
-export const COMPETITION_KIND_ICONS: Record<CompetitionKind, LucideIcon> = { fitness_challenge: Trophy, speed_fit: Timer };
+// Static versions for small badges, animated versions for interactive choices.
+const KIND_ICONS = { fitness_challenge: BicepsFlexed, speed_fit: Timer } as const;
+export const ANIMATED_KIND_ICONS: Record<CompetitionKind, AnimatedIcon> = { fitness_challenge: BicepsFlexedIcon, speed_fit: TimerIcon };
 
 export function CompetitionKindBadge({ kind }: { kind: CompetitionKind }) {
-  const Icon = COMPETITION_KIND_ICONS[kind];
+  const Icon = KIND_ICONS[kind];
   return (
     <Badge variant="outline" className="gap-1 border-gold/60 bg-gold/10 text-foreground">
       <Icon className="size-3" />

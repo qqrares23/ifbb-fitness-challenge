@@ -8,13 +8,15 @@ interface FormDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Changing the key remounts the form, re-seeding its state (e.g. when a different record is opened). */
   formKey: string | number;
+  /** Wider dialog, for pickers with a list. */
+  wide?: boolean;
   children: ReactNode;
 }
 
-export function FormDialog({ title, open, onOpenChange, formKey, children }: FormDialogProps) {
+export function FormDialog({ title, open, onOpenChange, formKey, wide, children }: FormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={wide ? "sm:max-w-2xl" : "sm:max-w-lg"}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -28,15 +30,17 @@ interface FormActionsProps {
   onCancel: () => void;
   submitLabel: string;
   saving: boolean;
+  /** Extra reason to block submitting, e.g. nothing picked yet. */
+  disabled?: boolean;
 }
 
-export function FormActions({ onCancel, submitLabel, saving }: FormActionsProps) {
+export function FormActions({ onCancel, submitLabel, saving, disabled }: FormActionsProps) {
   return (
     <DialogFooter>
       <Button type="button" variant="outline" onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" disabled={saving}>
+      <Button type="submit" disabled={saving || disabled}>
         {submitLabel}
       </Button>
     </DialogFooter>

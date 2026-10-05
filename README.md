@@ -30,7 +30,8 @@ Push a version tag to build installers for both platforms on GitHub Actions:
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-The `.dmg` (universal: Apple Silicon + Intel) and the Windows `.msi` / `setup.exe` are attached to a
+The `.dmg` (universal: Apple Silicon + Intel), the Windows `.msi` / `setup.exe` and the Linux
+`.AppImage` / `.deb` / `.rpm` are attached to a
 **draft** release on GitHub. The macOS build is not code-signed, so on first launch macOS asks for
 confirmation: right-click the app → **Open**. Signing needs an Apple Developer account.
 

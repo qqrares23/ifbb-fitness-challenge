@@ -23,6 +23,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0003_speed_fit.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "category_library",
+            sql: include_str!("../migrations/0004_category_library.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

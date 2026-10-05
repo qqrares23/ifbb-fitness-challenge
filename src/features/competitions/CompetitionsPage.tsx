@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Trophy } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Trophy } from "lucide-react";
+import { PlusIcon } from "@/components/icons/plus";
+import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -18,9 +19,9 @@ export function CompetitionsPage() {
   const [creating, setCreating] = useState(false);
 
   const newButton = (
-    <Button onClick={() => setCreating(true)}>
-      <Plus /> New competition
-    </Button>
+    <AnimatedButton icon={PlusIcon} onClick={() => setCreating(true)}>
+      New competition
+    </AnimatedButton>
   );
 
   return (

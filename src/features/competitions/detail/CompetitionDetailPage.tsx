@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArrowLeft, Flag, Pencil, Play, RotateCcw, SearchX, Trash2 } from "lucide-react";
+import { SearchX, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeftIcon } from "@/components/icons/arrow-left";
+import { CircleCheckIcon } from "@/components/icons/circle-check";
+import { PlayIcon } from "@/components/icons/play";
+import { RotateCCWIcon } from "@/components/icons/rotate-ccw";
+import { SquarePenIcon } from "@/components/icons/square-pen";
+import { useIconAnimation } from "@/components/icons/animated";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState } from "@/components/shared/QueryState";
@@ -24,11 +31,16 @@ import { StationsPanel } from "./StationsPanel";
 export function CompetitionDetailPage() {
   const id = Number(useParams().competitionId);
   const setupQuery = useCompetitionSetup(id);
+  const back = useIconAnimation();
 
   return (
     <>
-      <Link to="/competitions" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
-        <ArrowLeft className="size-4" /> Competitions
+      <Link
+        to="/competitions"
+        {...back.triggers}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeftIcon ref={back.ref} size={16} /> Competitions
       </Link>
       <QueryState query={setupQuery}>
         {(setup) => (setup ? <CompetitionDetail setup={setup} /> : <EmptyState icon={SearchX} title="Competition not found" />)}
@@ -72,28 +84,28 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
       <CompetitionKindBadge kind={competition.kind} />
       <CompetitionStatusBadge status={competition.status} />
       {!locked && (
-        <Button variant="outline" onClick={() => setEditing(true)}>
-          <Pencil /> Edit
-        </Button>
+        <AnimatedButton icon={SquarePenIcon} variant="outline" onClick={() => setEditing(true)}>
+          Edit
+        </AnimatedButton>
       )}
       <Button variant="outline" aria-label="Delete competition" onClick={() => setPending("delete")}>
         <Trash2 className="text-destructive" />
       </Button>
       {!locked && (
-        <Button disabled={readiness.blocking.length > 0} onClick={() => setPending("start")}>
-          <Play /> Start competition
-        </Button>
+        <AnimatedButton icon={PlayIcon} disabled={readiness.blocking.length > 0} onClick={() => setPending("start")}>
+          Start competition
+        </AnimatedButton>
       )}
       {competition.status === "running" && (
-        <Button onClick={() => setPending("finish")}>
-          <Flag /> Finish competition
-        </Button>
+        <AnimatedButton icon={CircleCheckIcon} onClick={() => setPending("finish")}>
+          Finish competition
+        </AnimatedButton>
       )}
       {competition.status === "finished" && results && (
         <>
-          <Button variant="outline" onClick={() => setPending("reopen")}>
-            <RotateCcw /> Reopen
-          </Button>
+          <AnimatedButton icon={RotateCCWIcon} variant="outline" onClick={() => setPending("reopen")}>
+            Reopen
+          </AnimatedButton>
           <ExportButtons setup={setup} results={results} />
         </>
       )}
