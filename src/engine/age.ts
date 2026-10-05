@@ -1,18 +1,15 @@
 import type { IsoDate } from "./types";
 
-function parseIsoDate(value: IsoDate): [year: number, month: number, day: number] {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+function yearOf(value: IsoDate): number {
+  const match = /^(\d{4})-\d{2}-\d{2}$/.exec(value);
   if (!match) throw new Error(`Invalid date "${value}", expected YYYY-MM-DD.`);
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
+  return Number(match[1]);
 }
 
 /**
- * Completed years of age on `onDate`. Works on calendar components only, so the result
- * never depends on the machine's time zone. A 29 February birthday turns over on 1 March.
+ * Age as IFBB categories count it: the year of `onDate` minus the year of birth. Month and day
+ * are ignored, so an athlete keeps the same age (and category) for the whole calendar year.
  */
 export function ageOn(dateOfBirth: IsoDate, onDate: IsoDate): number {
-  const [by, bm, bd] = parseIsoDate(dateOfBirth);
-  const [y, m, d] = parseIsoDate(onDate);
-  const birthdayReached = m > bm || (m === bm && d >= bd);
-  return y - by - (birthdayReached ? 0 : 1);
+  return yearOf(onDate) - yearOf(dateOfBirth);
 }

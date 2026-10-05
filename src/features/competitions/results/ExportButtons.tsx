@@ -5,21 +5,21 @@ import { Button } from "@/components/ui/button";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { ExportFormat } from "@/export/exportResults";
 import { errorMessage } from "@/lib/errors";
-import type { CategoryStandings } from "../standings";
+import type { CompetitionResults } from "../standings";
 
 interface ExportButtonsProps {
   setup: CompetitionSetup;
-  standings: CategoryStandings[];
+  results: CompetitionResults;
 }
 
-export function ExportButtons({ setup, standings }: ExportButtonsProps) {
+export function ExportButtons({ setup, results }: ExportButtonsProps) {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
 
   async function run(format: ExportFormat) {
     setBusy(format);
     try {
       const { exportResults } = await import("@/export/exportResults");
-      if (await exportResults(format, setup, standings)) toast.success(`Results saved as ${format.toUpperCase()}.`);
+      if (await exportResults(format, setup, results)) toast.success(`Results saved as ${format.toUpperCase()}.`);
     } catch (error) {
       toast.error(`Export failed: ${errorMessage(error)}`);
     } finally {

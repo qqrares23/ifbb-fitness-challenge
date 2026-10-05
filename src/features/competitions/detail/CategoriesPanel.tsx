@@ -39,7 +39,7 @@ export function CategoriesPanel({ setup, locked }: CategoriesPanelProps) {
       ) : (
         <>
           <div className="flex justify-end">{addButton}</div>
-          <div className="rounded-xl border bg-background">
+          <div className="surface">
             <Table>
               <TableHeader>
                 <TableRow>

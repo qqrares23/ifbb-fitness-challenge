@@ -9,6 +9,7 @@ import { QueryState } from "@/components/shared/QueryState";
 import { RowActions } from "@/components/shared/RowActions";
 import { SearchInput } from "@/components/shared/SearchInput";
 import type { Exercise } from "@/db/exercises";
+import { ROW_ENTER, staggerStyle } from "@/lib/motion";
 import { filterBySearch } from "@/lib/search";
 import { ExerciseFormDialog } from "./ExerciseFormDialog";
 import { useExerciseMutations, useExercises } from "./useExercises";
@@ -46,7 +47,7 @@ export function ExercisesPage() {
               {filtered.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">No exercise matches "{search}".</p>
               ) : (
-                <div className="rounded-xl border bg-background">
+                <div className="overflow-hidden surface">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -56,8 +57,8 @@ export function ExercisesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filtered.map((exercise) => (
-                        <TableRow key={exercise.id}>
+                      {filtered.map((exercise, index) => (
+                        <TableRow key={exercise.id} className={ROW_ENTER} style={staggerStyle(index)}>
                           <TableCell className="pl-4 align-top font-medium">{exercise.name}</TableCell>
                           <TableCell className="whitespace-pre-wrap text-muted-foreground">{exercise.description || "—"}</TableCell>
                           <TableCell className="pr-4 align-top">

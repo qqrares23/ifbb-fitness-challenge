@@ -1,6 +1,6 @@
 import type { CompetitionSetup } from "@/db/competitions";
-import type { CategoryStandings } from "@/features/competitions/standings";
-import { buildStandingsTable, standingsHead, type TableFormat } from "./standingsTable";
+import type { CompetitionResults } from "@/features/competitions/standings";
+import { resultsTables } from "./standingsTable";
 
 // A leading = + @ makes Excel / Sheets evaluate the cell as a formula. Negative numbers are
 // safe and never occur here anyway, so only a "-" followed by a non-digit is neutralised.
@@ -19,12 +19,11 @@ export function toCsv(rows: readonly (readonly string[])[]): string {
  * One flat sheet for the whole competition: a Category column, then the standard results
  * columns. Starts with a UTF-8 BOM so Excel reads accented names correctly.
  */
-export function standingsCsv(setup: CompetitionSetup, standings: readonly CategoryStandings[]): string {
-  const format: TableFormat = {
+export function resultsCsv(setup: CompetitionSetup, results: CompetitionResults): string {
+  const { head, categories } = resultsTables(setup, results, {
     stationHeader: (s) => `Station ${s.stationNumber} - ${s.exerciseName ?? ""}`,
-    missingReps: "",
-  };
-  const head = ["Category", ...standingsHead(setup.stations, format)];
-  const body = standings.flatMap((s) => buildStandingsTable(s, setup.stations, format).body.map((row) => [s.category.name, ...row]));
-  return "\uFEFF" + toCsv([head, ...body]);
+    missing: "",
+  });
+  const body = categories.flatMap(({ category, body }) => body.map((row) => [category.name, ...row]));
+  return "﻿" + toCsv([["Category", ...head], ...body]);
 }

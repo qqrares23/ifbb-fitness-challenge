@@ -7,11 +7,14 @@ import {
   listCompetitions,
   setCompetitionStatus,
   updateCompetition,
+  type Competition,
   type CompetitionStatus,
 } from "@/db/competitions";
 import { addEntries, deleteEntry, setEntryBib, setEntryCategory } from "@/db/entries";
 import { queryKeys } from "@/db/queryKeys";
-import { listScores, setScore } from "@/db/scores";
+import { listResults } from "@/db/results";
+import { setScore } from "@/db/scores";
+import { setTime } from "@/db/speedFitTimes";
 import { setStationCount, setStationExercise } from "@/db/stations";
 import { useDbMutation } from "@/hooks/useDbMutation";
 
@@ -60,12 +63,16 @@ export function useCategoryMutations() {
   };
 }
 
-export function useCompetitionScores(id: number, enabled: boolean) {
-  return useQuery({ queryKey: queryKeys.competitionScores(id), queryFn: () => listScores(id), enabled });
+export function useCompetitionResults(competition: Pick<Competition, "id" | "kind">, enabled: boolean) {
+  return useQuery({ queryKey: queryKeys.competitionResults(competition.id), queryFn: () => listResults(competition), enabled });
 }
 
-export function useScoreMutation(competitionId: number) {
-  return useDbMutation(setScore, { invalidates: [queryKeys.competitionScores(competitionId)] });
+export function useResultMutations(competitionId: number) {
+  const invalidates = [queryKeys.competitionResults(competitionId)];
+  return {
+    setScore: useDbMutation(setScore, { invalidates }),
+    setTime: useDbMutation(setTime, { invalidates }),
+  };
 }
 
 export function useEntryMutations() {

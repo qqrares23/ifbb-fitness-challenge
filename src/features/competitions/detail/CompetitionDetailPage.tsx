@@ -8,15 +8,14 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState } from "@/components/shared/QueryState";
 import type { CompetitionSetup } from "@/db/competitions";
-import type { RepScore } from "@/engine";
 import { formatDate } from "@/lib/dates";
 import { CompetitionFormDialog } from "../CompetitionFormDialog";
-import { CompetitionStatusBadge } from "../CompetitionStatusBadge";
+import { CompetitionKindBadge, CompetitionStatusBadge } from "../CompetitionBadges";
 import { competitionReadiness } from "../readiness";
-import { ExportButtons } from "../scoring/ExportButtons";
-import { ScoringPanel } from "../scoring/ScoringPanel";
-import { competitionStandings } from "../standings";
-import { useCompetitionMutations, useCompetitionScores, useCompetitionSetup } from "../useCompetitions";
+import { ExportButtons } from "../results/ExportButtons";
+import { ResultsPanel } from "../results/ResultsPanel";
+import { competitionResults, type CompetitionResults } from "../standings";
+import { useCompetitionMutations, useCompetitionResults, useCompetitionSetup } from "../useCompetitions";
 import { CategoriesPanel } from "./CategoriesPanel";
 import { EntriesPanel } from "./EntriesPanel";
 import { ReadinessCard } from "./ReadinessCard";
@@ -28,7 +27,7 @@ export function CompetitionDetailPage() {
 
   return (
     <>
-      <Link to="/competitions" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link to="/competitions" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
         <ArrowLeft className="size-4" /> Competitions
       </Link>
       <QueryState query={setupQuery}>
@@ -42,25 +41,35 @@ type PendingAction = "start" | "finish" | "reopen" | "delete" | null;
 
 function CompetitionDetail({ setup }: { setup: CompetitionSetup }) {
   const locked = setup.competition.status !== "draft";
-  const scoresQuery = useCompetitionScores(setup.competition.id, locked);
-  // Setup is shown as soon as it loads; the scores only matter once the competition has started.
-  if (locked && scoresQuery.status !== "success") return <QueryState query={scoresQuery}>{() => null}</QueryState>;
-  return <CompetitionView setup={setup} scores={scoresQuery.data ?? []} />;
+  const resultsQuery = useCompetitionResults(setup.competition, locked);
+  // Setup is shown as soon as it loads; results only matter once the competition has started.
+  if (locked && resultsQuery.status !== "success") return <QueryState query={resultsQuery}>{() => null}</QueryState>;
+  return <CompetitionView setup={setup} results={resultsQuery.data ? competitionResults(setup, resultsQuery.data) : null} />;
 }
 
-function CompetitionView({ setup, scores }: { setup: CompetitionSetup; scores: RepScore[] }) {
+function finishWarning(results: CompetitionResults): string {
+  const missing = results.categories.reduce((sum, c) => sum + c.missingResults, 0);
+  if (missing === 0) return "All results are in. Results will be locked and ready to export.";
+  const plural = missing !== 1;
+  return results.kind === "speed_fit"
+    ? `${missing} athlete${plural ? "s have" : " has"} no time and will be listed without a place. Results will be locked.`
+    : `${missing} station result${plural ? "s are" : " is"} still empty and will count as 0. Results will be locked.`;
+}
+
+function CompetitionView({ setup, results }: { setup: CompetitionSetup; results: CompetitionResults | null }) {
   const navigate = useNavigate();
   const { competition, stations, categories, entries } = setup;
   const { setStatus, remove } = useCompetitionMutations();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const locked = competition.status !== "draft";
+  const speedFit = competition.kind === "speed_fit";
   const readiness = competitionReadiness(setup);
-  const standings = locked ? competitionStandings(setup, scores) : [];
-  const missingResults = standings.reduce((sum, s) => sum + s.missingResults, 0);
+  const resultNoun = speedFit ? "time" : "rep";
 
   const actions = (
     <>
+      <CompetitionKindBadge kind={competition.kind} />
       <CompetitionStatusBadge status={competition.status} />
       {!locked && (
         <Button variant="outline" onClick={() => setEditing(true)}>
@@ -80,12 +89,12 @@ function CompetitionView({ setup, scores }: { setup: CompetitionSetup; scores: R
           <Flag /> Finish competition
         </Button>
       )}
-      {competition.status === "finished" && (
+      {competition.status === "finished" && results && (
         <>
           <Button variant="outline" onClick={() => setPending("reopen")}>
             <RotateCcw /> Reopen
           </Button>
-          <ExportButtons setup={setup} standings={standings} />
+          <ExportButtons setup={setup} results={results} />
         </>
       )}
     </>
@@ -101,22 +110,24 @@ function CompetitionView({ setup, scores }: { setup: CompetitionSetup; scores: R
 
       {!locked && <ReadinessCard readiness={readiness} />}
 
-      {/* Keyed by status so the default tab follows the competition into scoring / results. */}
-      <Tabs key={competition.status} defaultValue={locked ? "scoring" : "stations"}>
+      {/* Keyed by status so the default tab follows the competition into live entry / results. */}
+      <Tabs key={competition.status} defaultValue={locked ? "results" : speedFit ? "categories" : "stations"}>
         <TabsList className="mb-4">
-          {locked && <TabsTrigger value="scoring">{competition.status === "running" ? "Scoring" : "Results"}</TabsTrigger>}
-          <TabsTrigger value="stations">Stations ({stations.length})</TabsTrigger>
+          {locked && <TabsTrigger value="results">{competition.status === "finished" ? "Results" : speedFit ? "Timing" : "Scoring"}</TabsTrigger>}
+          {!speedFit && <TabsTrigger value="stations">Stations ({stations.length})</TabsTrigger>}
           <TabsTrigger value="categories">Categories ({categories.length})</TabsTrigger>
           <TabsTrigger value="athletes">Athletes ({entries.length})</TabsTrigger>
         </TabsList>
-        {locked && (
-          <TabsContent value="scoring">
-            <ScoringPanel setup={setup} standings={standings} editable={competition.status === "running"} />
+        {locked && results && (
+          <TabsContent value="results">
+            <ResultsPanel setup={setup} results={results} editable={competition.status === "running"} />
           </TabsContent>
         )}
-        <TabsContent value="stations">
-          <StationsPanel setup={setup} locked={locked} />
-        </TabsContent>
+        {!speedFit && (
+          <TabsContent value="stations">
+            <StationsPanel setup={setup} locked={locked} />
+          </TabsContent>
+        )}
         <TabsContent value="categories">
           <CategoriesPanel setup={setup} locked={locked} />
         </TabsContent>
@@ -130,7 +141,7 @@ function CompetitionView({ setup, scores }: { setup: CompetitionSetup; scores: R
         open={pending === "start"}
         onOpenChange={(open) => !open && setPending(null)}
         title="Start the competition?"
-        description="Stations, categories and the athlete list will be locked, and rep entry opens."
+        description={`${speedFit ? "Categories" : "Stations, categories"} and the athlete list will be locked, and ${resultNoun} entry opens.`}
         confirmLabel="Start"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "running" })}
       />
@@ -138,11 +149,7 @@ function CompetitionView({ setup, scores }: { setup: CompetitionSetup; scores: R
         open={pending === "finish"}
         onOpenChange={(open) => !open && setPending(null)}
         title="Finish the competition?"
-        description={
-          missingResults > 0
-            ? `${missingResults} station result${missingResults === 1 ? " is" : "s are"} still empty and will count as 0. Results will be locked.`
-            : "All results are in. Results will be locked and ready to export."
-        }
+        description={results ? finishWarning(results) : ""}
         confirmLabel="Finish"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "finished" })}
       />
@@ -150,7 +157,7 @@ function CompetitionView({ setup, scores }: { setup: CompetitionSetup; scores: R
         open={pending === "reopen"}
         onOpenChange={(open) => !open && setPending(null)}
         title="Reopen the competition?"
-        description="Rep entry opens again so results can be corrected. Stations, categories and athletes stay locked."
+        description={`Entry opens again so ${resultNoun}s can be corrected. The setup stays locked.`}
         confirmLabel="Reopen"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "running" })}
       />

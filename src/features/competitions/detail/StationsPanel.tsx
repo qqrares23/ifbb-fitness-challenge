@@ -50,7 +50,7 @@ export function StationsPanel({ setup, locked }: StationsPanelProps) {
       {stations.length > 0 && (
         <ol className="grid gap-2 sm:grid-cols-2">
           {stations.map((station) => (
-            <li key={station.stationNumber} className="flex items-center gap-3 rounded-xl border bg-background p-3">
+            <li key={station.stationNumber} className="flex items-center gap-3 surface p-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted font-semibold tabular-nums">
                 {station.stationNumber}
               </span>

@@ -1,24 +1,24 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CommitNumberInput } from "@/components/shared/CommitNumberInput";
+import { CommitNumberInput } from "@/components/shared/CommitInput";
 import { MAX_REPS } from "@/db/scores";
 import type { Station } from "@/db/stations";
-import type { CategoryStandings } from "../standings";
-import { useScoreMutation } from "../useCompetitions";
+import type { FitnessChallengeStandings } from "../standings";
+import { useResultMutations } from "../useCompetitions";
 
 interface RepsGridProps {
   competitionId: number;
   stations: Station[];
-  standings: CategoryStandings;
+  standings: FitnessChallengeStandings;
   editable: boolean;
 }
 
 /** Athletes × stations, in bib order, so a judge can find an athlete without the rows moving as scores change. */
 export function RepsGrid({ competitionId, stations, standings, editable }: RepsGridProps) {
-  const setScore = useScoreMutation(competitionId);
+  const { setScore } = useResultMutations(competitionId);
   const rows = [...standings.rows].sort((a, b) => a.entry.bibNumber - b.entry.bibNumber);
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-background">
+    <div className="overflow-x-auto surface">
       <Table>
         <TableHeader>
           <TableRow>

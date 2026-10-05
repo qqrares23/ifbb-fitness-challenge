@@ -81,7 +81,7 @@ function CategoryForm({ competitionId, category, onDone }: { competitionId: numb
           <Input id="category-max-age" inputMode="numeric" value={values.maxAge} onChange={(e) => set("maxAge", e.target.value)} placeholder="No limit" />
         </FormField>
       </div>
-      <p className="text-xs text-muted-foreground">Both limits are inclusive and use the athlete's age on the competition date.</p>
+      <p className="text-xs text-muted-foreground">Both limits are inclusive. Age = the competition's year minus the year of birth.</p>
       <FormActions onCancel={onDone} submitLabel={category ? "Save changes" : "Add category"} saving={create.isPending || update.isPending} />
     </form>
   );

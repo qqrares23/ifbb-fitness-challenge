@@ -1,34 +1,54 @@
 import { describe, expect, it } from "vitest";
+import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
-import type { CategoryStandings } from "@/features/competitions/standings";
-import { buildStandingsTable, exportFileStem } from "./standingsTable";
+import { competitionResults } from "@/features/competitions/standings";
 import { toCsv } from "./csv";
+import { exportFileStem, resultsTables } from "./standingsTable";
 
 const entry = (id: number, firstName: string): Entry => ({
   id, athleteId: id, categoryId: 1, bibNumber: id, firstName, lastName: "Pop", dateOfBirth: "2000-01-01", sex: "male", country: "ROU",
 });
 
-const standings: CategoryStandings = {
-  category: { id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null },
-  missingResults: 1,
-  rows: [
-    { entry: entry(1, "Ana"), totalReps: 30, complete: true, place: 1, perStation: new Map([[1, 20], [2, 10]]) },
-    { entry: entry(2, "Ion"), totalReps: 30, complete: false, place: 1, perStation: new Map([[1, 30], [2, null]]) },
+const setup: CompetitionSetup = {
+  competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "finished" },
+  stations: [
+    { stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" },
+    { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
   ],
+  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null }],
+  entries: [entry(1, "Ana"), entry(2, "Ion"), entry(3, "Eva")],
 };
 
-const stations = [
-  { stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" },
-  { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
-];
+const format = { stationHeader: (s: { stationNumber: number }) => `S${s.stationNumber}`, missing: "—" };
 
-describe("buildStandingsTable", () => {
-  it("uses the Nr Crt | Athlete Name | Country | stations | Placement layout, in ranking order", () => {
-    const table = buildStandingsTable(standings, stations, { stationHeader: (s) => `S${s.stationNumber}`, missingReps: "—" });
-    expect(table.head).toEqual(["Nr Crt", "Athlete Name", "Country", "S1", "S2", "Placement"]);
-    expect(table.body).toEqual([
+describe("resultsTables", () => {
+  it("Fitness Challenge: Nr Crt | Athlete Name | Country | stations | Placement, in ranking order", () => {
+    const results = competitionResults(setup, {
+      kind: "fitness_challenge",
+      scores: [
+        { entryId: 1, stationNumber: 1, reps: 20 },
+        { entryId: 1, stationNumber: 2, reps: 10 },
+        { entryId: 2, stationNumber: 1, reps: 30 },
+      ],
+    });
+    const { head, categories } = resultsTables(setup, results, format);
+    expect(head).toEqual(["Nr Crt", "Athlete Name", "Country", "S1", "S2", "Placement"]);
+    expect(categories[0]!.body).toEqual([
       ["1", "Ana Pop", "ROU", "20", "10", "1"],
       ["2", "Ion Pop", "ROU", "30", "—", "1"],
+      ["3", "Eva Pop", "ROU", "—", "—", "3"],
+    ]);
+  });
+
+  it("Speed Fit: Nr Crt | Athlete Name | Country | Time | Placement, fastest first, no time last", () => {
+    const speedFit = { ...setup, competition: { ...setup.competition, kind: "speed_fit" as const }, stations: [] };
+    const results = competitionResults(speedFit, { kind: "speed_fit", times: [{ entryId: 2, timeMs: 83_450 }, { entryId: 3, timeMs: 61_000 }] });
+    const { head, categories } = resultsTables(speedFit, results, format);
+    expect(head).toEqual(["Nr Crt", "Athlete Name", "Country", "Time", "Placement"]);
+    expect(categories[0]!.body).toEqual([
+      ["1", "Eva Pop", "ROU", "1:01.00", "1"],
+      ["2", "Ion Pop", "ROU", "1:23.45", "2"],
+      ["3", "Ana Pop", "ROU", "—", "—"],
     ]);
   });
 });

@@ -1,38 +1,59 @@
+import type { Category } from "@/db/categories";
+import type { CompetitionSetup } from "@/db/competitions";
+import type { Entry } from "@/db/entries";
 import type { Station } from "@/db/stations";
-import type { CategoryStandings } from "@/features/competitions/standings";
-
-export interface StandingsTable {
-  head: string[];
-  body: string[][];
-}
+import { formatDuration } from "@/engine";
+import type { CompetitionResults } from "@/features/competitions/standings";
 
 export interface TableFormat {
   stationHeader: (station: Station) => string;
-  /** What to print for a station with no recorded result. */
-  missingReps: string;
+  /** What to print where there is no result (a station, a time, or a place). */
+  missing: string;
 }
 
-export function standingsHead(stations: readonly Station[], format: Pick<TableFormat, "stationHeader">): string[] {
-  return ["Nr Crt", "Athlete Name", "Country", ...stations.map(format.stationHeader), "Placement"];
+/** One header for the whole competition, and the rows of each category in ranking order. */
+export interface ResultsTables {
+  head: string[];
+  categories: { category: Category; body: string[][] }[];
 }
+
+const ATHLETE_HEAD = ["Nr Crt", "Athlete Name", "Country"];
+
+function athleteCells(entry: Entry, index: number): string[] {
+  return [String(index + 1), `${entry.firstName} ${entry.lastName}`, entry.country];
+}
+
+const orMissing = (value: string | null, format: TableFormat) => value ?? format.missing;
 
 /**
- * The results table shared by every export:
- * Nr Crt | Athlete Name | Country | <reps per station…> | Placement — rows in ranking order.
+ * The results table every export uses:
+ *   Fitness Challenge: Nr Crt | Athlete Name | Country | <reps per station…> | Placement
+ *   Speed Fit:         Nr Crt | Athlete Name | Country | Time | Placement
  */
-export function buildStandingsTable(standings: CategoryStandings, stations: readonly Station[], format: TableFormat): StandingsTable {
+export function resultsTables(setup: CompetitionSetup, results: CompetitionResults, format: TableFormat): ResultsTables {
+  if (results.kind === "speed_fit") {
+    return {
+      head: [...ATHLETE_HEAD, "Time", "Placement"],
+      categories: results.categories.map(({ category, rows }) => ({
+        category,
+        body: rows.map((row, index) => [
+          ...athleteCells(row.entry, index),
+          orMissing(row.timeMs === null ? null : formatDuration(row.timeMs), format),
+          orMissing(row.place === null ? null : String(row.place), format),
+        ]),
+      })),
+    };
+  }
   return {
-    head: standingsHead(stations, format),
-    body: standings.rows.map((row, index) => [
-      String(index + 1),
-      `${row.entry.firstName} ${row.entry.lastName}`,
-      row.entry.country,
-      ...stations.map((s) => {
-        const reps = row.perStation.get(s.stationNumber);
-        return reps == null ? format.missingReps : String(reps);
-      }),
-      String(row.place),
-    ]),
+    head: [...ATHLETE_HEAD, ...setup.stations.map(format.stationHeader), "Placement"],
+    categories: results.categories.map(({ category, rows }) => ({
+      category,
+      body: rows.map((row, index) => [
+        ...athleteCells(row.entry, index),
+        ...setup.stations.map((s) => orMissing(row.perStation.get(s.stationNumber)?.toString() ?? null, format)),
+        String(row.place),
+      ]),
+    })),
   };
 }
 

@@ -6,11 +6,15 @@ import { listStations, type Station } from "./stations";
 
 export type CompetitionStatus = "draft" | "running" | "finished";
 
+/** Fitness Challenge = reps at stations, most wins. Speed Fit = one time for the whole set, fastest wins. */
+export type CompetitionKind = "fitness_challenge" | "speed_fit";
+
 export interface Competition {
   id: number;
   name: string;
   date: IsoDate;
   location: string;
+  kind: CompetitionKind;
   status: CompetitionStatus;
 }
 
@@ -22,6 +26,9 @@ export interface CompetitionSummary extends Competition {
 
 export type CompetitionInput = Pick<Competition, "name" | "date" | "location">;
 
+/** The challenge type is chosen once, at creation. */
+export type NewCompetitionInput = CompetitionInput & Pick<Competition, "kind">;
+
 /** Everything the competition screens need, read in one go. */
 export interface CompetitionSetup {
   competition: Competition;
@@ -30,7 +37,7 @@ export interface CompetitionSetup {
   entries: Entry[];
 }
 
-const COLUMNS = "id, name, date, location, status";
+const COLUMNS = "id, name, date, location, kind, status";
 
 function values(input: CompetitionInput) {
   return [input.name.trim(), input.date, input.location.trim()];
@@ -59,10 +66,10 @@ export async function getCompetitionSetup(id: number): Promise<CompetitionSetup 
 }
 
 /** Returns the new competition's id. */
-export async function createCompetition(input: CompetitionInput): Promise<number> {
+export async function createCompetition(input: NewCompetitionInput): Promise<number> {
   const result = await (await db()).execute(
-    "INSERT INTO competitions (name, date, location) VALUES ($1, $2, $3)",
-    values(input),
+    "INSERT INTO competitions (name, date, location, kind) VALUES ($1, $2, $3, $4)",
+    [...values(input), input.kind],
   );
   return result.lastInsertId!;
 }

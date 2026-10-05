@@ -17,6 +17,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0002_lifecycle_rules.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "speed_fit",
+            sql: include_str!("../migrations/0003_speed_fit.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

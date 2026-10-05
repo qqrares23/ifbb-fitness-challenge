@@ -1,4 +1,10 @@
+import type { CompetitionKind } from "@/db/competitions";
 import type { CategoryGender, CategoryRules, Sex } from "@/engine";
+
+export const COMPETITION_KIND_LABELS: Record<CompetitionKind, string> = {
+  fitness_challenge: "Fitness Challenge",
+  speed_fit: "Speed Fit",
+};
 
 export const SEX_LABELS: Record<Sex, string> = { male: "Male", female: "Female" };
 

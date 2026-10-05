@@ -3,7 +3,7 @@ import type { CompetitionSetup } from "@/db/competitions";
 import { competitionReadiness } from "./readiness";
 
 const ready: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", status: "draft" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "draft" },
   stations: [
     { stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" },
     { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
@@ -22,6 +22,11 @@ describe("competitionReadiness", () => {
   it("blocks without stations or athletes", () => {
     const { blocking } = competitionReadiness({ ...ready, stations: [], entries: [] });
     expect(blocking).toHaveLength(2);
+  });
+
+  it("doesn't ask a Speed Fit competition for stations", () => {
+    const speedFit = { ...ready, competition: { ...ready.competition, kind: "speed_fit" as const }, stations: [] };
+    expect(competitionReadiness(speedFit).blocking).toEqual([]);
   });
 
   it("blocks on stations without an exercise, listed together", () => {

@@ -1,8 +1,11 @@
 # IFBB Fitness Challenge
 
-A desktop app (Windows and macOS) for running IFBB Fitness Challenge competitions fully offline:
-manage athletes and the exercise library, set up a competition (stations, categories, entries),
-record reps live, and export official results as PDF or CSV.
+A desktop app (Windows and macOS) for running IFBB competitions fully offline: manage athletes and
+the exercise library, set up a competition (categories, entries), record results live, and export
+official results as PDF or CSV. Two challenge types:
+
+- **Fitness Challenge** — reps at each station; most total reps wins.
+- **Speed Fit** — one time for the whole set of exercises; fastest wins.
 
 Built with Tauri 2, React 19, TypeScript and SQLite. All data stays on the computer, in the app's
 data folder (`fitness-challenge.db`).
@@ -42,5 +45,6 @@ confirmation: right-click the app → **Open**. Signing needs an Apple Developer
 | `src/components/` | Shared UI (shadcn primitives in `ui/`) |
 | `src-tauri/migrations/` | Database schema and lifecycle rules (enforced by SQLite triggers) |
 
-Ranking: total reps across all stations, highest first; equal totals share a place and the next
-place is skipped (1, 1, 3).
+Ranking: Fitness Challenge by total reps (highest first), Speed Fit by time (fastest first; athletes
+without a time are listed last, unplaced). Equal results share a place and the next place is
+skipped (1, 1, 3). Age for categories = the competition's year minus the year of birth.

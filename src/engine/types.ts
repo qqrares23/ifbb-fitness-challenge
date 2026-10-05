@@ -25,6 +25,19 @@ export interface RepScore {
   reps: number;
 }
 
+export interface EntryTime {
+  entryId: number;
+  timeMs: number;
+}
+
+export interface TimedRow<T> {
+  entry: T;
+  /** null = no time recorded. */
+  timeMs: number | null;
+  /** null for athletes without a time; they are listed last. */
+  place: number | null;
+}
+
 export interface RankedRow<T> {
   entry: T;
   /** Sum of every recorded station result; a missing station counts as 0. */

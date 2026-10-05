@@ -8,7 +8,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState } from "@/components/shared/QueryState";
 import { formatDate } from "@/lib/dates";
 import { CompetitionFormDialog } from "./CompetitionFormDialog";
-import { CompetitionStatusBadge } from "./CompetitionStatusBadge";
+import { ROW_ENTER, staggerStyle } from "@/lib/motion";
+import { CompetitionKindBadge, CompetitionStatusBadge } from "./CompetitionBadges";
 import { useCompetitions } from "./useCompetitions";
 
 export function CompetitionsPage() {
@@ -29,9 +30,9 @@ export function CompetitionsPage() {
       <QueryState query={competitionsQuery}>
         {(competitions) =>
           competitions.length === 0 ? (
-            <EmptyState icon={Trophy} title="No competitions yet" description="Create a competition, then add its stations, categories and athletes." action={newButton} />
+            <EmptyState icon={Trophy} title="No competitions yet" description="Create a Fitness Challenge or Speed Fit competition, then add its categories and athletes." action={newButton} />
           ) : (
-            <div className="rounded-xl border bg-background">
+            <div className="overflow-hidden surface">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -45,12 +46,22 @@ export function CompetitionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {competitions.map((c) => (
-                    <TableRow key={c.id} className="cursor-pointer" onClick={() => navigate(`/competitions/${c.id}`)}>
-                      <TableCell className="pl-4 font-medium">{c.name}</TableCell>
+                  {competitions.map((c, index) => (
+                    <TableRow
+                      key={c.id}
+                      className={`cursor-pointer ${ROW_ENTER}`}
+                      style={staggerStyle(index)}
+                      onClick={() => navigate(`/competitions/${c.id}`)}
+                    >
+                      <TableCell className="pl-4">
+                        <span className="block font-medium">{c.name}</span>
+                        <span className="mt-1 inline-block">
+                          <CompetitionKindBadge kind={c.kind} />
+                        </span>
+                      </TableCell>
                       <TableCell>{formatDate(c.date)}</TableCell>
                       <TableCell className="text-muted-foreground">{c.location || "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">{c.stationCount}</TableCell>
+                      <TableCell className="text-right tabular-nums">{c.kind === "speed_fit" ? "—" : c.stationCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.categoryCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.entryCount}</TableCell>
                       <TableCell className="pr-4 text-right">

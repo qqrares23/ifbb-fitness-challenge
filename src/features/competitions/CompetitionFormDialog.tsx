@@ -3,9 +3,17 @@ import { useNavigate } from "react-router";
 import { Input } from "@/components/ui/input";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import { FormField } from "@/components/shared/FormField";
-import type { Competition, CompetitionInput } from "@/db/competitions";
+import type { Competition, CompetitionKind, NewCompetitionInput } from "@/db/competitions";
 import { todayIso } from "@/lib/dates";
+import { COMPETITION_KIND_LABELS } from "@/lib/labels";
+import { cn } from "@/lib/utils";
+import { COMPETITION_KIND_ICONS } from "./CompetitionBadges";
 import { useCompetitionMutations } from "./useCompetitions";
+
+const KIND_DESCRIPTIONS: Record<CompetitionKind, string> = {
+  fitness_challenge: "Reps at each station. Most total reps wins.",
+  speed_fit: "One time for the whole set of exercises. Fastest wins.",
+};
 
 interface CompetitionFormDialogProps {
   /** null = create a new competition (and open it afterwards). */
@@ -30,14 +38,16 @@ export function CompetitionFormDialog({ competition, open, onOpenChange }: Compe
 function CompetitionForm({ competition, onDone }: { competition: Competition | null; onDone: () => void }) {
   const navigate = useNavigate();
   const { create, update } = useCompetitionMutations();
-  const [values, setValues] = useState<CompetitionInput>(competition ?? { name: "", date: todayIso(), location: "" });
+  const [values, setValues] = useState<NewCompetitionInput>(
+    competition ?? { name: "", date: todayIso(), location: "", kind: "fitness_challenge" },
+  );
   const [submitted, setSubmitted] = useState(false);
   const errors = {
     name: submitted && !values.name.trim() ? "Name is required." : undefined,
     date: submitted && !values.date ? "Date is required." : undefined,
   };
 
-  const set = (key: keyof CompetitionInput, value: string) => setValues((v) => ({ ...v, [key]: value }));
+  const set = <K extends keyof NewCompetitionInput>(key: K, value: NewCompetitionInput[K]) => setValues((v) => ({ ...v, [key]: value }));
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -52,8 +62,34 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4" noValidate>
+      {/* The challenge type decides the whole data shape, so it can only be picked at creation. */}
+      {!competition && (
+        <fieldset className="grid grid-cols-2 gap-3">
+          <legend className="mb-1.5 text-sm font-medium">Challenge</legend>
+          {(Object.keys(COMPETITION_KIND_LABELS) as CompetitionKind[]).map((kind) => {
+            const Icon = COMPETITION_KIND_ICONS[kind];
+            const selected = values.kind === kind;
+            return (
+              <button
+                key={kind}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => set("kind", kind)}
+                className={cn(
+                  "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                  selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "bg-card",
+                )}
+              >
+                <Icon className={cn("size-5", selected ? "text-primary" : "text-muted-foreground")} />
+                <span className="font-medium">{COMPETITION_KIND_LABELS[kind]}</span>
+                <span className="text-xs text-muted-foreground">{KIND_DESCRIPTIONS[kind]}</span>
+              </button>
+            );
+          })}
+        </fieldset>
+      )}
       <FormField id="competition-name" label="Name" error={errors.name}>
-        <Input id="competition-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. IFBB Fitness Challenge World Cup" autoFocus />
+        <Input id="competition-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. IFBB World Cup" autoFocus />
       </FormField>
       <div className="grid grid-cols-2 gap-4">
         <FormField id="competition-date" label="Date" error={errors.date}>
@@ -63,7 +99,7 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
           <Input id="competition-location" value={values.location} onChange={(e) => set("location", e.target.value)} />
         </FormField>
       </div>
-      <p className="text-xs text-muted-foreground">Athlete ages are checked against category limits on this date.</p>
+      <p className="text-xs text-muted-foreground">Athlete ages for categories are counted as this date's year minus the year of birth.</p>
       <FormActions onCancel={onDone} submitLabel={competition ? "Save changes" : "Create competition"} saving={create.isPending || update.isPending} />
     </form>
   );

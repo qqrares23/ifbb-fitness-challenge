@@ -3,7 +3,7 @@ import { Trash2, UserPlus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CommitNumberInput } from "@/components/shared/CommitNumberInput";
+import { CommitNumberInput } from "@/components/shared/CommitInput";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { Category } from "@/db/categories";
@@ -91,9 +91,9 @@ function CategoryEntries({ setup, category, entries, locked, onRemove }: Categor
         </span>
       </h3>
       {entries.length === 0 ? (
-        <p className="rounded-xl border border-dashed bg-background p-4 text-sm text-muted-foreground">No athletes in this category.</p>
+        <p className="rounded-xl border border-dashed bg-card p-4 text-sm text-muted-foreground">No athletes in this category.</p>
       ) : (
-        <div className="rounded-xl border bg-background">
+        <div className="surface">
           <Table>
             <TableHeader>
               <TableRow>

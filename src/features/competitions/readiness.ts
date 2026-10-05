@@ -12,7 +12,8 @@ export function competitionReadiness({ competition, stations, categories, entrie
   const blocking: string[] = [];
   const warnings: string[] = [];
 
-  if (stations.length === 0) blocking.push("Set the number of stations.");
+  // Speed Fit has no stations: one time per athlete for the whole set.
+  if (competition.kind === "fitness_challenge" && stations.length === 0) blocking.push("Set the number of stations.");
   const withoutExercise = stations.filter((s) => s.exerciseId === null).map((s) => s.stationNumber);
   if (withoutExercise.length > 0) {
     blocking.push(`Pick an exercise for station${withoutExercise.length > 1 ? "s" : ""} ${withoutExercise.join(", ")}.`);

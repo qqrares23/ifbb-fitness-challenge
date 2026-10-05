@@ -5,7 +5,7 @@ export function ReadinessCard({ readiness }: { readiness: Readiness }) {
   const { blocking, warnings } = readiness;
 
   return (
-    <div className="mb-6 rounded-xl border bg-background p-4">
+    <div className="mb-6 surface p-4">
       {blocking.length === 0 ? (
         <p className="flex items-center gap-2 font-medium text-emerald-700">
           <CircleCheck className="size-4" /> Ready to start.

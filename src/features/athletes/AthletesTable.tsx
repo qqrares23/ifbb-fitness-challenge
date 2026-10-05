@@ -5,6 +5,7 @@ import { ageOn } from "@/engine";
 import { countryName } from "@/lib/countries";
 import { formatDate, todayIso } from "@/lib/dates";
 import { SEX_LABELS } from "@/lib/labels";
+import { ROW_ENTER, staggerStyle } from "@/lib/motion";
 
 interface AthletesTableProps {
   athletes: readonly Athlete[];
@@ -15,7 +16,7 @@ interface AthletesTableProps {
 export function AthletesTable({ athletes, onEdit, onDelete }: AthletesTableProps) {
   const today = todayIso();
   return (
-    <div className="rounded-xl border bg-background">
+    <div className="overflow-hidden surface">
       <Table>
         <TableHeader>
           <TableRow>
@@ -29,8 +30,8 @@ export function AthletesTable({ athletes, onEdit, onDelete }: AthletesTableProps
           </TableRow>
         </TableHeader>
         <TableBody>
-          {athletes.map((athlete) => (
-            <TableRow key={athlete.id}>
+          {athletes.map((athlete, index) => (
+            <TableRow key={athlete.id} className={ROW_ENTER} style={staggerStyle(index)}>
               <TableCell className="pl-4 font-medium">{athlete.lastName}</TableCell>
               <TableCell>{athlete.firstName}</TableCell>
               <TableCell>{SEX_LABELS[athlete.sex]}</TableCell>

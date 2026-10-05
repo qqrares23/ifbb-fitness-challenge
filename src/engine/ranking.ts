@@ -1,7 +1,8 @@
+import { assignPlaces } from "./places";
 import type { RankedRow, RepScore } from "./types";
 
 /**
- * Ranks one category: total reps across all stations, highest first.
+ * Fitness Challenge: ranks one category by total reps across all stations, highest first.
  * Equal totals share a place and the following place is skipped (1, 1, 3).
  *
  * Rows with equal totals keep the order of `entries`, so pass entries in the order you
@@ -35,10 +36,6 @@ export function rankCategory<T extends { id: number }>(
 
   // Array.prototype.sort is stable, which is what keeps ties in input order.
   rows.sort((a, b) => b.totalReps - a.totalReps);
-  rows.forEach((row, index) => {
-    const previous = rows[index - 1];
-    row.place = previous && previous.totalReps === row.totalReps ? previous.place : index + 1;
-  });
-
+  assignPlaces(rows, (row) => row.totalReps).forEach((place, index) => (rows[index]!.place = place));
   return rows;
 }
