@@ -22,6 +22,15 @@ export function CompetitionStatusBadge({ status }: { status: CompetitionStatus }
   );
 }
 
+/** Shown next to athletes entered after the competition started. */
+export function LateEntryBadge() {
+  return (
+    <Badge variant="outline" className="ml-2 border-amber-400/60 bg-amber-50 px-1.5 py-0 text-[10px] text-amber-800">
+      Late entry
+    </Badge>
+  );
+}
+
 // Static versions for small badges, animated versions for interactive choices.
 const KIND_ICONS = { fitness_challenge: BicepsFlexed, speed_fit: Timer } as const;
 export const ANIMATED_KIND_ICONS: Record<CompetitionKind, AnimatedIcon> = { fitness_challenge: BicepsFlexedIcon, speed_fit: TimerIcon };

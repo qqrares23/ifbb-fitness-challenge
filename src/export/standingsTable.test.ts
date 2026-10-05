@@ -6,7 +6,7 @@ import { toCsv } from "./csv";
 import { exportFileStem, resultsTables } from "./standingsTable";
 
 const entry = (id: number, firstName: string): Entry => ({
-  id, athleteId: id, categoryId: 1, bibNumber: id, firstName, lastName: "Pop", dateOfBirth: "2000-01-01", sex: "male", country: "ROU",
+  id, athleteId: id, categoryId: 1, bibNumber: id, firstName, lastName: "Pop", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", lateEntry: false,
 });
 
 const setup: CompetitionSetup = {

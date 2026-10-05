@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { UserPlusIcon } from "@/components/icons/user-plus";
+import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import { describeCategoryRules } from "@/lib/labels";
+import { AddEntriesDialog } from "../detail/AddEntriesDialog";
 import { leaderboardRows, type CompetitionResults } from "../standings";
 import { Leaderboard } from "./Leaderboard";
 import { RepsGrid } from "./RepsGrid";
@@ -19,6 +22,7 @@ interface ResultsPanelProps {
 /** Live entry + standings for either challenge type, one category at a time. */
 export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [enteringLate, setEnteringLate] = useState(false);
   // Both challenge types share these fields; widening the union lets one tab bar serve both.
   const categories: { category: Category; missingResults: number; rows: unknown[] }[] = results.categories;
   const index = Math.max(0, categories.findIndex((c) => c.category.id === categoryId));
@@ -42,10 +46,18 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
         </TabsList>
       </Tabs>
 
-      <p className="text-sm text-muted-foreground">
-        {describeCategoryRules(current.category)} · {current.rows.length} athletes · {expected - current.missingResults} of {expected}{" "}
-        {speedFit ? "times" : "station results"} recorded
-      </p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          {describeCategoryRules(current.category)} · {current.rows.length} athletes · {expected - current.missingResults} of {expected}{" "}
+          {speedFit ? "times" : "station results"} recorded
+        </p>
+        {/* Spotting a missed athlete happens here, mid-competition, so entering them is one click away. */}
+        {editable && (
+          <AnimatedButton icon={UserPlusIcon} variant="outline" size="sm" onClick={() => setEnteringLate(true)}>
+            Enter athlete
+          </AnimatedButton>
+        )}
+      </div>
 
       {current.rows.length === 0 ? (
         <p className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">No athletes in this category.</p>
@@ -63,6 +75,8 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
           </div>
         </div>
       )}
+
+      <AddEntriesDialog setup={setup} open={enteringLate} onOpenChange={setEnteringLate} initialCategoryId={current.category.id} />
     </div>
   );
 }

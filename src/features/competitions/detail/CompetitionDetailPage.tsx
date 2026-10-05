@@ -18,10 +18,11 @@ import type { CompetitionSetup } from "@/db/competitions";
 import { formatDate } from "@/lib/dates";
 import { CompetitionFormDialog } from "../CompetitionFormDialog";
 import { CompetitionKindBadge, CompetitionStatusBadge } from "../CompetitionBadges";
+import { competitionPermissions } from "../permissions";
 import { competitionReadiness } from "../readiness";
 import { ExportButtons } from "../results/ExportButtons";
 import { ResultsPanel } from "../results/ResultsPanel";
-import { competitionResults, type CompetitionResults } from "../standings";
+import { competitionResults, entriesWithResults, type CompetitionResults } from "../standings";
 import { useCompetitionMutations, useCompetitionResults, useCompetitionSetup } from "../useCompetitions";
 import { CategoriesPanel } from "./CategoriesPanel";
 import { EntriesPanel } from "./EntriesPanel";
@@ -75,6 +76,7 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const locked = competition.status !== "draft";
+  const permissions = competitionPermissions(competition.status);
   const speedFit = competition.kind === "speed_fit";
   const readiness = competitionReadiness(setup);
   const resultNoun = speedFit ? "time" : "rep";
@@ -132,19 +134,19 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
         </TabsList>
         {locked && results && (
           <TabsContent value="results">
-            <ResultsPanel setup={setup} results={results} editable={competition.status === "running"} />
+            <ResultsPanel setup={setup} results={results} editable={permissions.enterResults} />
           </TabsContent>
         )}
         {!speedFit && (
           <TabsContent value="stations">
-            <StationsPanel setup={setup} locked={locked} />
+            <StationsPanel setup={setup} locked={!permissions.editSetup} />
           </TabsContent>
         )}
         <TabsContent value="categories">
-          <CategoriesPanel setup={setup} locked={locked} />
+          <CategoriesPanel setup={setup} permissions={permissions} />
         </TabsContent>
         <TabsContent value="athletes">
-          <EntriesPanel setup={setup} locked={locked} />
+          <EntriesPanel setup={setup} permissions={permissions} entryIdsWithResults={entriesWithResults(results)} />
         </TabsContent>
       </Tabs>
 
@@ -153,7 +155,7 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
         open={pending === "start"}
         onOpenChange={(open) => !open && setPending(null)}
         title="Start the competition?"
-        description={`${speedFit ? "Categories" : "Stations, categories"} and the athlete list will be locked, and ${resultNoun} entry opens.`}
+        description={`${speedFit ? "Category rules" : "Stations and category rules"} will be locked and ${resultNoun} entry opens. Athletes missed out can still be entered late.`}
         confirmLabel="Start"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "running" })}
       />

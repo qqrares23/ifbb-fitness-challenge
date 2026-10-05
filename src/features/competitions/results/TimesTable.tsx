@@ -3,6 +3,7 @@ import { TimeInput } from "@/components/shared/CommitInput";
 import { formatDuration } from "@/engine";
 import { countryName } from "@/lib/countries";
 import type { SpeedFitStandings } from "../standings";
+import { LateEntryBadge } from "../CompetitionBadges";
 import { useResultMutations } from "../useCompetitions";
 import { PlaceBadge } from "./PlaceBadge";
 
@@ -35,6 +36,7 @@ export function TimesTable({ competitionId, standings, editable }: TimesTablePro
               <TableCell className="pl-4 font-semibold tabular-nums">{entry.bibNumber}</TableCell>
               <TableCell className="whitespace-nowrap font-medium">
                 {entry.lastName} {entry.firstName}
+                {entry.lateEntry && <LateEntryBadge />}
               </TableCell>
               <TableCell>
                 {countryName(entry.country)} <span className="text-xs text-muted-foreground">{entry.country}</span>

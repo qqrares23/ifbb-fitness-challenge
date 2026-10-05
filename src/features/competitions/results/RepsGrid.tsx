@@ -3,6 +3,7 @@ import { CommitNumberInput } from "@/components/shared/CommitInput";
 import { MAX_REPS } from "@/db/scores";
 import type { Station } from "@/db/stations";
 import type { FitnessChallengeStandings } from "../standings";
+import { LateEntryBadge } from "../CompetitionBadges";
 import { useResultMutations } from "../useCompetitions";
 
 interface RepsGridProps {
@@ -39,6 +40,7 @@ export function RepsGrid({ competitionId, stations, standings, editable }: RepsG
               <TableCell className="pl-4 font-semibold tabular-nums">{entry.bibNumber}</TableCell>
               <TableCell className="whitespace-nowrap">
                 {entry.lastName} {entry.firstName}
+                {entry.lateEntry && <LateEntryBadge />}
               </TableCell>
               {stations.map(({ stationNumber }) => {
                 const reps = perStation.get(stationNumber) ?? null;

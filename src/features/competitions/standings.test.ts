@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CompetitionSetup } from "@/db/competitions";
 import { competitionResults, leaderboardRows } from "./standings";
 
-const athlete = { firstName: "A", lastName: "B", dateOfBirth: "2000-01-01", sex: "male", country: "ROU" } as const;
+const athlete = { firstName: "A", lastName: "B", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", lateEntry: false } as const;
 
 const setup: CompetitionSetup = {
   competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "running" },

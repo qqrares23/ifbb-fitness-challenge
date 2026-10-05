@@ -8,17 +8,21 @@ export interface Entry extends Omit<Athlete, "id"> {
   athleteId: number;
   categoryId: number;
   bibNumber: number;
+  /** Entered after the competition started (set by the database, see 0005). */
+  lateEntry: boolean;
 }
 
 export async function listEntries(competitionId: number): Promise<Entry[]> {
-  return (await db()).select<Entry[]>(
-    `SELECT e.id, e.athlete_id AS athleteId, e.category_id AS categoryId, e.bib_number AS bibNumber,
+  const rows = await (await db()).select<(Omit<Entry, "lateEntry"> & { lateEntry: number })[]>(
+    `SELECT e.id, e.athlete_id AS athleteId, e.category_id AS categoryId, e.bib_number AS bibNumber, e.late_entry AS lateEntry,
             a.first_name AS firstName, a.last_name AS lastName, a.date_of_birth AS dateOfBirth, a.sex, a.country
      FROM entries e JOIN athletes a ON a.id = e.athlete_id
      WHERE e.competition_id = $1
      ORDER BY e.bib_number`,
     [competitionId],
   );
+  // SQLite has no boolean type; the column is 0 / 1.
+  return rows.map((row) => ({ ...row, lateEntry: row.lateEntry === 1 }));
 }
 
 /** Enters each athlete with the next free bib number of the competition. */

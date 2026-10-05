@@ -52,6 +52,15 @@ export function competitionResults(setup: CompetitionSetup, recorded: RecordedRe
   };
 }
 
+/** Entries that already have a result — they can't be moved to another category any more. */
+export function entriesWithResults(results: CompetitionResults | null): ReadonlySet<number> {
+  if (!results) return new Set();
+  const ids = results.kind === "speed_fit"
+    ? results.categories.flatMap((c) => c.rows.filter((r) => r.timeMs !== null).map((r) => r.entry.id))
+    : results.categories.flatMap((c) => c.rows.filter((r) => [...r.perStation.values()].some((reps) => reps !== null)).map((r) => r.entry.id));
+  return new Set(ids);
+}
+
 /** A challenge-neutral view of a ranked row, for leaderboards. */
 export interface LeaderboardRow {
   entry: Entry;

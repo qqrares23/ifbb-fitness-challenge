@@ -10,7 +10,7 @@ const ready: CompetitionSetup = {
   ],
   categories: [{ id: 10, name: "Juniors", gender: "male", minAge: 16, maxAge: 20 }],
   entries: [
-    { id: 100, athleteId: 1, categoryId: 10, bibNumber: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU" },
+    { id: 100, athleteId: 1, categoryId: 10, bibNumber: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU", lateEntry: false },
   ],
 };
 

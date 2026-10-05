@@ -11,15 +11,16 @@ import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import { CATEGORY_GENDER_LABELS, formatAgeRange } from "@/lib/labels";
 import { ROW_ENTER, staggerStyle } from "@/lib/motion";
+import { canRemoveCategory, type CompetitionPermissions } from "../permissions";
 import { useCategoryMutations } from "../useCompetitions";
 import { AddCategoriesDialog } from "./AddCategoriesDialog";
 
 interface CategoriesPanelProps {
   setup: CompetitionSetup;
-  locked: boolean;
+  permissions: CompetitionPermissions;
 }
 
-export function CategoriesPanel({ setup, locked }: CategoriesPanelProps) {
+export function CategoriesPanel({ setup, permissions }: CategoriesPanelProps) {
   const { categories, entries } = setup;
   const { remove } = useCategoryMutations();
   const [adding, setAdding] = useState(false);
@@ -28,7 +29,7 @@ export function CategoriesPanel({ setup, locked }: CategoriesPanelProps) {
   const entryCount = (categoryId: number) => entries.filter((e) => e.categoryId === categoryId).length;
   const removingCount = removing ? entryCount(removing.id) : 0;
 
-  const addButton = !locked && (
+  const addButton = permissions.addCategories && (
     <AnimatedButton icon={LayersIcon} onClick={() => setAdding(true)}>
       Add from library
     </AnimatedButton>
@@ -45,7 +46,7 @@ export function CategoriesPanel({ setup, locked }: CategoriesPanelProps) {
         />
       ) : (
         <>
-          {!locked && (
+          {permissions.addCategories && (
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
                 Categories come from the{" "}
@@ -53,6 +54,7 @@ export function CategoriesPanel({ setup, locked }: CategoriesPanelProps) {
                   category library
                 </Link>
                 ; this competition keeps its own copy.
+                {!permissions.editSetup && " Started: a category can still be added for a late athlete, and removed only while empty."}
               </p>
               {addButton}
             </div>
@@ -76,7 +78,7 @@ export function CategoriesPanel({ setup, locked }: CategoriesPanelProps) {
                     <TableCell>{formatAgeRange(category)}</TableCell>
                     <TableCell className="text-right tabular-nums">{entryCount(category.id)}</TableCell>
                     <TableCell className="pr-4 text-right">
-                      {!locked && (
+                      {canRemoveCategory(permissions, entryCount(category.id)) && (
                         <Button variant="ghost" size="icon" aria-label="Remove category" onClick={() => setRemoving(category)}>
                           <Trash2 className="text-destructive" />
                         </Button>

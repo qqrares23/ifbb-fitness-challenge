@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Trash2, Users } from "lucide-react";
-import { UserPlusIcon } from "@/components/icons/user-plus";
-import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UserPlusIcon } from "@/components/icons/user-plus";
+import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { CommitNumberInput } from "@/components/shared/CommitInput";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -14,27 +14,33 @@ import type { Entry } from "@/db/entries";
 import { ageOn, eligibilityProblems } from "@/engine";
 import { countryName } from "@/lib/countries";
 import { describeCategoryRules } from "@/lib/labels";
+import { LateEntryBadge } from "../CompetitionBadges";
+import { canChangeCategory, type CompetitionPermissions } from "../permissions";
 import { useEntryMutations } from "../useCompetitions";
 import { AddEntriesDialog } from "./AddEntriesDialog";
 
 interface EntriesPanelProps {
   setup: CompetitionSetup;
-  locked: boolean;
+  permissions: CompetitionPermissions;
+  /** Entries that already have results (can't change category, lose results when removed). */
+  entryIdsWithResults: ReadonlySet<number>;
 }
 
-export function EntriesPanel({ setup, locked }: EntriesPanelProps) {
-  const { categories, entries } = setup;
+export function EntriesPanel({ setup, permissions, entryIdsWithResults }: EntriesPanelProps) {
+  const { competition, categories, entries } = setup;
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Entry | null>(null);
   const { remove } = useEntryMutations();
+  const editable = permissions.editEntries;
+  const started = competition.status !== "draft";
 
   if (categories.length === 0) {
     return <EmptyState icon={Users} title="Add a category first" description="Athletes are entered into a category of this competition." />;
   }
 
-  const addButton = !locked && (
+  const addButton = editable && (
     <AnimatedButton icon={UserPlusIcon} onClick={() => setAdding(true)}>
-      Enter athletes
+      {started ? "Enter late athlete" : "Enter athletes"}
     </AnimatedButton>
   );
 
@@ -44,14 +50,21 @@ export function EntriesPanel({ setup, locked }: EntriesPanelProps) {
         <EmptyState icon={Users} title="No athletes entered" description="Bib numbers are assigned automatically and can be changed." action={addButton} />
       ) : (
         <>
-          <div className="flex justify-end">{addButton}</div>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              {competition.status === "running" && "The competition is running: athletes can still be entered late, and bibs changed."}
+              {competition.status === "finished" && "The competition is finished. Reopen it to add or remove athletes."}
+            </p>
+            {addButton}
+          </div>
           {categories.map((category) => (
             <CategoryEntries
               key={category.id}
               setup={setup}
               category={category}
               entries={entries.filter((e) => e.categoryId === category.id)}
-              locked={locked}
+              permissions={permissions}
+              entryIdsWithResults={entryIdsWithResults}
               onRemove={setRemoving}
             />
           ))}
@@ -63,7 +76,12 @@ export function EntriesPanel({ setup, locked }: EntriesPanelProps) {
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
         title="Remove athlete?"
-        description={removing ? `#${removing.bibNumber} ${removing.firstName} ${removing.lastName} will be taken out of this competition.` : ""}
+        description={
+          removing
+            ? `#${removing.bibNumber} ${removing.firstName} ${removing.lastName} will be taken out of this competition` +
+              (entryIdsWithResults.has(removing.id) ? ", and the results already recorded for them will be deleted." : ".")
+            : ""
+        }
         confirmLabel="Remove"
         destructive
         onConfirm={() => removing && remove.mutate(removing.id)}
@@ -76,13 +94,15 @@ interface CategoryEntriesProps {
   setup: CompetitionSetup;
   category: Category;
   entries: Entry[];
-  locked: boolean;
+  permissions: CompetitionPermissions;
+  entryIdsWithResults: ReadonlySet<number>;
   onRemove: (entry: Entry) => void;
 }
 
-function CategoryEntries({ setup, category, entries, locked, onRemove }: CategoryEntriesProps) {
+function CategoryEntries({ setup, category, entries, permissions, entryIdsWithResults, onRemove }: CategoryEntriesProps) {
   const { setCategory } = useEntryMutations();
   const date = setup.competition.date;
+  const editable = permissions.editEntries;
 
   return (
     <section>
@@ -103,31 +123,37 @@ function CategoryEntries({ setup, category, entries, locked, onRemove }: Categor
                 <TableHead>Athlete</TableHead>
                 <TableHead className="text-right">Age</TableHead>
                 <TableHead>Country</TableHead>
-                {!locked && <TableHead className="w-56">Category</TableHead>}
-                {!locked && <TableHead className="w-12" />}
+                {editable && <TableHead className="w-56">Category</TableHead>}
+                {editable && <TableHead className="w-12" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {entries.map((entry) => {
                 const problems = eligibilityProblems(entry, category, date);
+                const movable = canChangeCategory(permissions, entryIdsWithResults.has(entry.id));
                 return (
                   <TableRow key={entry.id}>
                     <TableCell className="pl-4">
-                      {locked ? <span className="font-semibold tabular-nums">{entry.bibNumber}</span> : <BibInput entry={entry} />}
+                      {editable ? <BibInput entry={entry} /> : <span className="font-semibold tabular-nums">{entry.bibNumber}</span>}
                     </TableCell>
                     <TableCell>
                       <span className="font-medium">
                         {entry.lastName} {entry.firstName}
                       </span>
+                      {entry.lateEntry && <LateEntryBadge />}
                       {problems.length > 0 && <span className="block text-xs text-destructive">{problems.join(" ")}</span>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{ageOn(entry.dateOfBirth, date)}</TableCell>
                     <TableCell>
                       {countryName(entry.country)} <span className="text-xs text-muted-foreground">{entry.country}</span>
                     </TableCell>
-                    {!locked && (
-                      <TableCell>
-                        <Select value={entry.categoryId.toString()} onValueChange={(value) => setCategory.mutate({ entryId: entry.id, categoryId: Number(value) })}>
+                    {editable && (
+                      <TableCell title={movable ? undefined : "Has results already — the category can't change."}>
+                        <Select
+                          value={entry.categoryId.toString()}
+                          disabled={!movable}
+                          onValueChange={(value) => setCategory.mutate({ entryId: entry.id, categoryId: Number(value) })}
+                        >
                           <SelectTrigger className="w-full" aria-label="Move to category">
                             <SelectValue />
                           </SelectTrigger>
@@ -141,7 +167,7 @@ function CategoryEntries({ setup, category, entries, locked, onRemove }: Categor
                         </Select>
                       </TableCell>
                     )}
-                    {!locked && (
+                    {editable && (
                       <TableCell className="pr-4">
                         <Button variant="ghost" size="icon" aria-label="Remove athlete" onClick={() => onRemove(entry)}>
                           <Trash2 className="text-destructive" />
