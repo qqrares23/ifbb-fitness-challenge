@@ -11,9 +11,24 @@ interface CategoryResultsBase {
   missingResults: number;
 }
 
+/** One station set's ranking within a category. */
+export interface SetStandings {
+  stationSet: StationSet;
+  rows: RankedRow<Entry>[];
+  /** Station results of this set still empty. */
+  missingResults: number;
+}
+
 export interface FitnessChallengeStandings extends CategoryResultsBase {
-  /** The station set the category is scored on; null until one is picked. */
-  stationSet: StationSet | null;
+  /** One ranking per station set the category uses, in set order (empty until a set is picked). */
+  sets: SetStandings[];
+  /**
+   * With several sets: the overall ranking by the sum of the set totals. Its `perStation` maps each
+   * set's index in `sets` to the athlete's total there (null where they have no reps in that set).
+   * null with a single set.
+   */
+  overall: RankedRow<Entry>[] | null;
+  /** The ranking that stands for the category: the overall one with several sets, else its one set's. */
   rows: RankedRow<Entry>[];
 }
 
@@ -24,6 +39,12 @@ export interface SpeedFitStandings extends CategoryResultsBase {
 export type CompetitionResults =
   | { kind: "fitness_challenge"; categories: FitnessChallengeStandings[] }
   | { kind: "speed_fit"; categories: SpeedFitStandings[] };
+
+const missingStationResults = (rows: RankedRow<Entry>[]) =>
+  rows.reduce((sum, row) => sum + [...row.perStation.values()].filter((reps) => reps === null).length, 0);
+
+/** Whether an athlete has any result in a ranking (athletes without any are unplaced). */
+export const hasReps = (row: RankedRow<Entry>) => [...row.perStation.values()].some((reps) => reps !== null);
 
 /** Entries of one category in bib order — the order ties and unplaced athletes are listed in. */
 function categoryEntries(setup: CompetitionSetup, category: Category): Entry[] {
@@ -47,13 +68,32 @@ export function competitionResults(setup: CompetitionSetup, recorded: RecordedRe
   return {
     kind: "fitness_challenge",
     categories: setup.categories.map((category) => {
-      // Only the category's current set counts; reps on other sets are kept but not ranked.
-      const stationSet = setup.stationSets.find((s) => s.id === category.stationSetId) ?? null;
-      const stationNumbers = stationSet?.stations.map((s) => s.stationNumber) ?? [];
-      const scores = recorded.scores.filter((s) => s.setId === stationSet?.id);
-      const rows = rankCategory(categoryEntries(setup, category), stationNumbers, scores);
-      const missingResults = rows.reduce((sum, row) => sum + [...row.perStation.values()].filter((reps) => reps === null).length, 0);
-      return { category, stationSet, rows, missingResults };
+      const entries = categoryEntries(setup, category);
+      // Each set the category uses is ranked on its own stations and reps. Reps on a set the
+      // category no longer uses are kept but not ranked.
+      const sets = category.stationSetIds.flatMap((setId) => {
+        const stationSet = setup.stationSets.find((s) => s.id === setId);
+        if (!stationSet) return [];
+        const scores = recorded.scores.filter((s) => s.setId === setId);
+        const rows = rankCategory(entries, stationSet.stations.map((s) => s.stationNumber), scores);
+        return [{ stationSet, rows, missingResults: missingStationResults(rows) }];
+      });
+      // Overall: the same ranking rule, with each set's total standing in for a station.
+      const overall =
+        sets.length > 1
+          ? rankCategory(
+              entries,
+              sets.map((_, i) => i),
+              sets.flatMap((set, i) => set.rows.filter(hasReps).map((row) => ({ entryId: row.entry.id, stationNumber: i, reps: row.totalReps }))),
+            )
+          : null;
+      return {
+        category,
+        sets,
+        overall,
+        rows: overall ?? sets[0]?.rows ?? rankCategory(entries, [], []),
+        missingResults: sets.reduce((sum, set) => sum + set.missingResults, 0),
+      };
     }),
   };
 }

@@ -9,8 +9,9 @@ import type { CompetitionSetup } from "@/db/competitions";
 import { describeCategoryRules } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { AddEntriesDialog } from "../detail/AddEntriesDialog";
-import type { CompetitionResults } from "../standings";
+import type { CompetitionResults, FitnessChallengeStandings } from "../standings";
 import { ExpandableTable } from "./ExpandableTable";
+import { OverallTable } from "./OverallTable";
 import { RepsGrid } from "./RepsGrid";
 import { TimesTable } from "./TimesTable";
 
@@ -25,13 +26,15 @@ interface ResultsPanelProps {
 export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [enteringLate, setEnteringLate] = useState(false);
+  // Which ranking of a category with several station sets is shown: a set's index, or "overall".
+  const [view, setView] = useState<{ categoryId: number; part: string } | null>(null);
   // A challenge-neutral summary of each category, so one tab bar serves both challenge types.
   const categories = results.categories.map((c) => ({
     category: c.category,
     missingResults: c.missingResults,
     athletes: c.rows.length,
-    // Speed Fit: one time per athlete. Fitness Challenge: one result per station of the category's set.
-    resultsPerAthlete: "stationSet" in c ? (c.stationSet?.stations.length ?? 0) : 1,
+    // Speed Fit: one time per athlete. Fitness Challenge: one result per station of each of the category's sets.
+    resultsPerAthlete: "sets" in c ? c.sets.reduce((sum, set) => sum + set.stationSet.stations.length, 0) : 1,
   }));
   const index = Math.max(0, categories.findIndex((c) => c.category.id === categoryId));
   const current = categories[index];
@@ -124,17 +127,65 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
       ) : (
         // Keyed by category so switching tabs plays the entrance animation.
         <div key={current.category.id} className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
-          <ExpandableTable title={current.category.name}>
-            {results.kind === "speed_fit" ? (
+          {results.kind === "speed_fit" ? (
+            <ExpandableTable title={current.category.name}>
               <TimesTable competitionId={setup.competition.id} standings={results.categories[index]!} editable={editable} />
-            ) : (
-              <RepsGrid competitionId={setup.competition.id} standings={results.categories[index]!} editable={editable} />
-            )}
-          </ExpandableTable>
+            </ExpandableTable>
+          ) : (
+            <FitnessChallengeTables
+              competitionId={setup.competition.id}
+              standings={results.categories[index]!}
+              editable={editable}
+              part={view?.categoryId === current.category.id ? view.part : "0"}
+              onPartChange={(part) => setView({ categoryId: current.category.id, part })}
+            />
+          )}
         </div>
       )}
 
       <AddEntriesDialog setup={setup} open={enteringLate} onOpenChange={setEnteringLate} initialCategoryId={current.category.id} />
+    </div>
+  );
+}
+
+interface FitnessChallengeTablesProps {
+  competitionId: number;
+  standings: FitnessChallengeStandings;
+  editable: boolean;
+  /** A set's index in `standings.sets`, or "overall". */
+  part: string;
+  onPartChange: (part: string) => void;
+}
+
+/** One category's Fitness Challenge tables: its set, or with several sets a tab per set plus Overall. */
+function FitnessChallengeTables({ competitionId, standings, editable, part, onPartChange }: FitnessChallengeTablesProps) {
+  const { category, sets } = standings;
+  if (sets.length === 0) {
+    return <p className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">Pick a station set for this category in the Categories tab.</p>;
+  }
+  const overall = sets.length > 1 && part === "overall";
+  const set = sets[Math.min(Number(part) || 0, sets.length - 1)]!;
+
+  return (
+    <div className="grid gap-3">
+      {sets.length > 1 && (
+        <Tabs value={overall ? "overall" : String(sets.indexOf(set))} onValueChange={onPartChange}>
+          <TabsList className="h-auto flex-wrap">
+            {sets.map(({ stationSet, missingResults }, i) => (
+              <TabsTrigger key={stationSet.id} value={String(i)} className="flex-none px-3">
+                {stationSet.name}
+                {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
+              </TabsTrigger>
+            ))}
+            <TabsTrigger value="overall" className="flex-none px-3 font-semibold">
+              Overall
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+      <ExpandableTable title={sets.length > 1 ? `${category.name} · ${overall ? "Overall" : set.stationSet.name}` : category.name}>
+        {overall ? <OverallTable standings={standings} /> : <RepsGrid competitionId={competitionId} set={set} editable={editable} />}
+      </ExpandableTable>
     </div>
   );
 }

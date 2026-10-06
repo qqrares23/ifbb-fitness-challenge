@@ -31,7 +31,7 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
 
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  function drawHeader(category: Category) {
+  function drawHeader(category: Category, part: string | null) {
     const leftWidth = drawLogo(doc, logos.left, MARGIN, 10, 22, "left");
     drawLogo(doc, logos.right, pageWidth - MARGIN, 10, 22, "right");
     const textX = MARGIN + (leftWidth > 0 ? leftWidth + 6 : 0);
@@ -41,7 +41,7 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
       .setFontSize(10)
       .setTextColor(MUTED)
       .text([formatDate(competition.date), competition.location].filter(Boolean).join(" · "), textX, 25)
-      .text(`${COMPETITION_KIND_LABELS[competition.kind]} — ${categoryTitle(category)} Official Results`, textX, 30);
+      .text(`${COMPETITION_KIND_LABELS[competition.kind]} — ${categoryTitle(category)}${part ? ` · ${part}` : ""} Official Results`, textX, 30);
   }
 
   const tables = resultsTables(results, {
@@ -50,11 +50,11 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
   });
   const nameColumn = 1;
 
-  for (const [index, { category, head, body }] of tables.entries()) {
+  for (const [index, { category, part, head, body }] of tables.entries()) {
     // Columns differ per category: each uses its own station set.
     const placementColumn = head.length - 1;
     if (index > 0) doc.addPage();
-    drawHeader(category);
+    drawHeader(category, part);
     const y = 40;
 
     if (body.length === 0) {

@@ -53,7 +53,11 @@ export async function createStationSet({ competitionId }: { competitionId: numbe
   // Later sets start unused: categories left without a set (e.g. after deleting one) are pointed
   // at the right set by hand, and readiness flags them until then.
   if (names.length === 0) {
-    await conn.execute("UPDATE categories SET station_set_id = $1 WHERE competition_id = $2 AND station_set_id IS NULL", [result.lastInsertId, competitionId]);
+    await conn.execute(
+      `INSERT INTO category_station_sets (category_id, set_id)
+       SELECT id, $1 FROM categories c WHERE competition_id = $2 AND NOT EXISTS (SELECT 1 FROM category_station_sets WHERE category_id = c.id)`,
+      [result.lastInsertId, competitionId],
+    );
   }
 }
 
@@ -63,7 +67,7 @@ export async function renameStationSet({ id, name }: { id: number; name: string 
   });
 }
 
-/** Also deletes its stations and the reps recorded on them; categories using it are left without a set. */
+/** Also deletes its stations and the reps recorded on them; categories stop using it. */
 export async function deleteStationSet(id: number): Promise<void> {
   await (await db()).execute("DELETE FROM station_sets WHERE id = $1", [id]);
 }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { addCategoriesFromLibrary, deleteCategory, setCategoryStationSet, updateCategoryRules } from "@/db/categories";
+import { addCategoriesFromLibrary, deleteCategory, setCategoryUsesStationSet, updateCategoryRules } from "@/db/categories";
 import {
   createCompetition,
   deleteCompetition,
@@ -64,7 +64,7 @@ export function useCategoryMutations() {
   return {
     addFromLibrary: useDbMutation(addCategoriesFromLibrary, { invalidates, success: ({ levelIds, subgroupIds }) => `${count(levelIds.length + subgroupIds.length)} added.` }),
     remove: useDbMutation(deleteCategory, { invalidates, success: "Category removed from the competition." }),
-    setStationSet: useDbMutation(setCategoryStationSet, { invalidates }),
+    setUsesStationSet: useDbMutation(setCategoryUsesStationSet, { invalidates }),
     updateRules: useDbMutation(updateCategoryRules, { invalidates, success: "Category rules saved." }),
   };
 }

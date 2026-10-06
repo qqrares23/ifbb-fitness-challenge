@@ -15,7 +15,7 @@ const setup: CompetitionSetup = {
     { id: 1, name: "Set A", stations: [{ stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" }, { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" }] },
     { id: 2, name: "Set B", stations: [{ stationNumber: 1, exerciseId: 3, exerciseName: "Sit-ups" }] },
   ],
-  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", stationSetId: 1 }],
+  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", stationSetIds: [1] }],
   entries: [entry(1, "Ana"), entry(2, "Ion"), entry(3, "Eva")],
 };
 
@@ -59,9 +59,9 @@ describe("station sets in exports", () => {
     const twoSets: CompetitionSetup = {
       ...setup,
       categories: [
-        { ...setup.categories[0]!, id: 1, name: "Gold", stationSetId: 1 },
-        { ...setup.categories[0]!, id: 2, name: "Silver", stationSetId: 1 },
-        { ...setup.categories[0]!, id: 3, name: "Bronze", stationSetId: 2 },
+        { ...setup.categories[0]!, id: 1, name: "Gold", stationSetIds: [1] },
+        { ...setup.categories[0]!, id: 2, name: "Silver", stationSetIds: [1] },
+        { ...setup.categories[0]!, id: 3, name: "Bronze", stationSetIds: [2] },
       ],
       entries: [entry(1, "Ana"), { ...entry(2, "Ion"), categoryId: 2 }, { ...entry(3, "Eva"), categoryId: 3 }],
     };
@@ -70,6 +70,25 @@ describe("station sets in exports", () => {
     const lines = resultsCsv(results).replace("﻿", "").split("\r\n");
     expect(lines.filter((l) => l.startsWith("Category,"))).toHaveLength(2);
     expect(lines).toContain("Bronze,1,Eva Pop,ROU,7,7,1");
+  });
+});
+
+describe("several station sets", () => {
+  it("exports a table per set and an overall table with the set totals", () => {
+    const both: CompetitionSetup = { ...setup, categories: [{ ...setup.categories[0]!, stationSetIds: [1, 2] }] };
+    const results = competitionResults(both, {
+      kind: "fitness_challenge",
+      scores: [
+        { entryId: 1, setId: 1, stationNumber: 1, reps: 20 },
+        { entryId: 1, setId: 2, stationNumber: 1, reps: 5 },
+        { entryId: 2, setId: 2, stationNumber: 1, reps: 30 },
+      ],
+    });
+    const tables = resultsTables(results, format);
+    expect(tables.map((t) => t.part)).toEqual(["Set A", "Set B", "Overall"]);
+    expect(tables[2]!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Set A", "Set B", "Total", "Placement"]);
+    expect(tables[2]!.body[0]).toEqual(["1", "Ion Pop", "ROU", "—", "30", "30", "1"]);
+    expect(resultsCsv(results)).toContain("Open · Overall,1,Ion Pop,ROU,—,30,30,1".replace("—", ""));
   });
 });
 

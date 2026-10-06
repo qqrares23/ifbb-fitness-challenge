@@ -15,7 +15,8 @@ A desktop app for running IFBB competitions **fully offline**. Organisers:
    **categories**: one library per federation (IFBB, Romania) and challenge type, each age group →
    sub-group by sex and age → optional levels;
 2. create a **competition** of one of two challenge types:
-   - **Fitness Challenge**: athletes do reps at the stations of their category's station set, and the most total reps wins;
+   - **Fitness Challenge**: athletes do reps at the stations of their category's station set(s), and the most total reps wins
+     (a category on several sets is ranked per set and overall);
    - **Speed Fit**: each athlete gets one time for the whole set of exercises, and the fastest wins;
 3. set it up (station sets, categories, entries with numbers), **start** it, record results live,
    **finish** it, and **export** official results as PDF (with chosen logos) or CSV;
@@ -171,7 +172,7 @@ athletes ───────────────┐ (ON DELETE RESTRICT)
 exercises ──┐ (RESTRICT)│
             │           │
 competitions ─┬─< station_sets ─< competition_stations (set_id, station_number) → exercise_id?
-   kind       ├─< categories (copied from the library; station_set_id → station_sets)
+   kind       ├─< categories (copied from the library) ─< category_station_sets >─ station_sets
    status     └─< entries (athlete, category, bib, late_entry)
                      ├─< scores (entry_id, set_id, station_number → station)   [fitness_challenge]
                      └─  speed_fit_times (entry_id PK, time_ms)                 [speed_fit]
@@ -189,9 +190,10 @@ age_groups ─< age_subgroups (sex, ages) ─< category_levels   (library; copie
 | `competitions` | `name`, `date`, `location`, `status` ∈ draft/running/finished, `kind` ∈ fitness_challenge/speed_fit, `started_at`, `finished_at` |
 | `station_sets` | `competition_id` (CASCADE), `name` ("Set A"…), UNIQUE per competition NOCASE. Fitness Challenge only; a new Fitness Challenge competition gets "Set A" (trigger) |
 | `competition_stations` | PK (`set_id`, `station_number`), `exercise_id` nullable until picked |
-| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules, `age_group`, `level` (both empty for pre-0006 categories), `station_set_id` (the set it is scored on; SET NULL if the set is deleted). UNIQUE (`competition_id`, `name`) |
+| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules, `age_group`, `level` (both empty for pre-0006 categories). (`station_set_id` is unused since 0012.) UNIQUE (`competition_id`, `name`) |
+| `category_station_sets` | PK (`category_id`, `set_id`), both CASCADE: the station sets a category is scored on. A new category gets the competition's first set (trigger); editable until finished |
 | `entries` | one row per athlete **per category** (an athlete can enter several levels): UNIQUE (`category_id`, `athlete_id`). One bib per athlete per competition, shared by all their entries and never used by another athlete (triggers). `late_entry` 0/1 |
-| `scores` | PK (`entry_id`, `set_id`, `station_number`), `reps` 0–9999. FK (`set_id`, `station_number`) → station, CASCADE: removing a station deletes its reps. Inserts only on the set of the entry's category; reps on other sets are kept (they come back if the category switches back) |
+| `scores` | PK (`entry_id`, `set_id`, `station_number`), `reps` 0–9999. FK (`set_id`, `station_number`) → station, CASCADE: removing a station deletes its reps. Inserts only on a set the entry's category uses; reps on a set it stops using are kept (they come back if it is added again) |
 | `speed_fit_times` | PK `entry_id`, `time_ms` 1 … 86 399 999 |
 
 Conventions: dates are ISO `YYYY-MM-DD` text, timestamps are `datetime('now')` (UTC), booleans are
@@ -221,6 +223,7 @@ register it in `lib.rs` with the next `version`.
 | 9 | `0009_category_libraries.sql` | Rebuilds the library tables with `age_groups.federation` and `kind`; existing library → IFBB Fitness Challenge, the others start empty |
 | 10 | `0010_station_sets.sql` | Station sets (stations and scores rebuilt per set, existing → "Set A"); stations, sets and categories editable until finished |
 | 11 | `0011_clubs_and_photos.sql` | `athletes.club`, `exercises.photo` |
+| 12 | `0012_category_multiple_sets.sql` | `category_station_sets`: several station sets per category |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
 
@@ -237,7 +240,7 @@ Any other transition raises `That competition status change is not allowed.` `ki
 |---|:-:|:-:|:-:|
 | Edit name / date / location | ✅ | ❌ | ❌ |
 | Station sets: add, rename, delete; stations: count and exercises (an exercise change keeps reps) | ✅ | ✅ | ❌ |
-| Add category, edit its rules, switch its station set | ✅ | ✅ | ❌ |
+| Add category, edit its rules, add / remove its station sets | ✅ | ✅ | ❌ |
 | Remove category (with its entries and results) | ✅ | ✅ | ❌ |
 | Add / remove entry, change bib | ✅ | ✅ (new entries get `late_entry = 1`) | ❌ |
 | Change entry category | ✅ | only while the entry has no results | ❌ |
@@ -311,7 +314,7 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
     `createStationSet` names it "Set A/B/…" and gives it to categories without a set.
     `setStationCount({ setId, count })` is an idempotent recursive-CTE `INSERT OR IGNORE`, then
     `DELETE … > count` (reps on removed stations cascade away).
-  - **Category edits** (`db/categories.ts`): `setCategoryStationSet`, and `updateCategoryRules`, which
+  - **Category edits** (`db/categories.ts`): `setCategoryUsesStationSet` (add / remove one set), and `updateCategoryRules`, which
     renames a library category to match its new ages.
   - **Category snapshot** (`addCategoriesFromLibrary(levelIds)`): reads the levels with their sub-group
     and age group (`json_each`), composes names with `categoryName()` and inserts them in **one**
@@ -378,8 +381,10 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
     category's rules.
   - Warnings: the same exercise twice in a set, a set no category uses, a category with no athletes.
 - **`standings.ts`**: the single ranking entry point.
-  - `competitionResults(setup, recorded)` → per-category standings (each Fitness Challenge category
-    with its `stationSet`, ranked only on that set's stations and reps), plus `missingResults`.
+  - `competitionResults(setup, recorded)` → per-category standings. A Fitness Challenge category has
+    `sets` (one ranking per station set it uses, on that set's stations and reps), `overall` (with
+    several sets: `rankCategory` with each set's total standing in for a station, so the same 1, 1, 3
+    rule applies) and `rows` (overall, else its one set's), plus `missingResults`.
   - `entriesWithResults(recorded)` → entry IDs with a result on any set (these entries can't change
     category, and removing one deletes its results).
 
@@ -417,7 +422,7 @@ CompetitionDetailPage   load setup (["competitions", id])
 
 - **StationsPanel / CategoriesPanel**: editable until the competition is finished. Each set card has
   rename, delete, station count (shrinking after the start asks first: reps are deleted) and
-  exercises. Each category row has a station set picker (Fitness Challenge), edit rules
+  exercises. Each category row has station set chips (Fitness Challenge; toggle any number), edit rules
   (`CategoryRulesDialog`, sharing `AgeRulesFields` with the library's sub-group form) and remove.
 - **AddEntriesDialog**: pick a category, then tick athletes. Already-entered athletes are hidden,
   ineligible ones are disabled with the reason shown, and a **New athlete** button opens the athlete
@@ -431,7 +436,9 @@ CompetitionDetailPage   load setup (["competitions", id])
   missing" or a check), **Previous/Next** buttons (Next turns primary once the current category has
   all results), a progress line, and an **Enter athlete** shortcut for late entries. Below that, the
   entry table **is** the standings (there is no separate leaderboard or winner banner):
-  - `RepsGrid` (Place | Nr | Athlete | stations of the category's set | Total) or `TimesTable`
+  - For a category on several sets, a tab per set plus **Overall** (`OverallTable`: set totals and
+    the grand total, read-only).
+  - `RepsGrid` (Place | Nr | Athlete | stations of one set | Total) or `TimesTable`
     (Place | Nr | Athlete | Time), in **ranking order**: rows glide to their new place
     (`useFlipAnimation`) as results are saved; the leader / winner row has a trophy and gold tint
     (`AthleteCell`). Athletes without results are unplaced. Station headers have a photo button.
@@ -473,6 +480,7 @@ startup bundle. Export is offered only once the competition is **finished**.
 exportResults(format, setup, results, logos)
   ├ standingsTable.resultsTables()   one table per category (its own header), ranking order:
   │     Fitness Challenge: Nr Crt | Athlete Name | Country | [Club] | <stations of its set> | Total | Placement
+  │       (a table per set; with several sets also "Overall": <total per set> | Total | Placement)
   │     Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
   │     (Club only when someone in the category has one)
   ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a header between the left

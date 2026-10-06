@@ -27,14 +27,15 @@ export function resultsCsv(results: CompetitionResults): string {
   });
   const rows: string[][] = [];
   let previousHead = "";
-  for (const { category, head, body } of tables) {
+  for (const { category, part, head, body } of tables) {
     const headKey = JSON.stringify(head);
     if (headKey !== previousHead) {
       if (rows.length > 0) rows.push([]);
       rows.push(["Category", ...head]);
       previousHead = headKey;
     }
-    rows.push(...body.map((row) => [category.name, ...row]));
+    const name = part ? `${category.name} · ${part}` : category.name;
+    rows.push(...body.map((row) => [name, ...row]));
   }
   return "﻿" + toCsv(rows);
 }

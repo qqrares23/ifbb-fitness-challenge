@@ -62,7 +62,7 @@ export function StationsPanel({ setup, locked, started }: StationsPanelProps) {
             <StationSetCard
               key={`${set.id}-${set.stations.length}`}
               set={set}
-              usedBy={categories.filter((c) => c.stationSetId === set.id)}
+              usedBy={categories.filter((c) => c.stationSetIds.includes(set.id))}
               exercises={exercises}
               locked={locked}
               started={started}
@@ -185,7 +185,7 @@ function StationSetCard({ set, usedBy, exercises, locked, started }: StationSetC
         title={`Delete ${set.name}?`}
         description={
           `${set.name} and its stations will be deleted${started ? ", together with any reps recorded on them" : ""}.` +
-          (usedBy.length > 0 ? ` ${usedBy.length} categor${usedBy.length === 1 ? "y uses" : "ies use"} it and will need another set.` : "")
+          (usedBy.length > 0 ? ` ${usedBy.length} categor${usedBy.length === 1 ? "y uses" : "ies use"} it and will stop using it.` : "")
         }
         confirmLabel="Delete"
         destructive

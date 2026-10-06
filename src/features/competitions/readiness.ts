@@ -33,10 +33,10 @@ export function competitionReadiness({ competition, stationSets, categories, ent
       for (const [name, numbers] of stationsByExercise) {
         if (numbers.length > 1) warnings.push(`"${name}" is used at ${where}stations ${numbers.join(", ")}.`);
       }
-      if (stationSets.length > 1 && !categories.some((c) => c.stationSetId === set.id)) warnings.push(`No category uses ${set.name}.`);
+      if (stationSets.length > 1 && !categories.some((c) => c.stationSetIds.includes(set.id))) warnings.push(`No category uses ${set.name}.`);
     }
     for (const category of categories) {
-      if (category.stationSetId === null) blocking.push(`Pick a station set for "${category.name}".`);
+      if (category.stationSetIds.length === 0) blocking.push(`Pick a station set for "${category.name}".`);
     }
   }
 

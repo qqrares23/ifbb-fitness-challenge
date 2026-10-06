@@ -11,8 +11,11 @@ export interface Category extends CategoryRules {
   ageGroup: string;
   /** e.g. "Gold"; empty for a sub-group without levels, and for categories created before the hierarchy. */
   level: string;
-  /** The station set it is scored on (Fitness Challenge); null = none picked yet / Speed Fit. */
-  stationSetId: number | null;
+  /**
+   * The station sets it is scored on (Fitness Challenge), in set order: each is ranked on its own,
+   * plus an overall ranking when there are several. Empty = none picked yet / Speed Fit.
+   */
+  stationSetIds: number[];
 }
 
 /** A library sub-group within a competition (e.g. "Junior Men 14–23") and the indexes of its levels. */
@@ -48,12 +51,14 @@ export function groupBySubgroup(categories: readonly Category[]): SubgroupCatego
  * categories saved earlier too.
  */
 export async function listCategories(competitionId: number): Promise<Category[]> {
-  const rows = await (await db()).select<Category[]>(
-    `SELECT id, name, gender, min_age AS minAge, max_age AS maxAge, age_group AS ageGroup, level, station_set_id AS stationSetId
-     FROM categories WHERE competition_id = $1
+  const raw = await (await db()).select<(Omit<Category, "stationSetIds"> & { stationSetIds: string })[]>(
+    `SELECT id, name, gender, min_age AS minAge, max_age AS maxAge, age_group AS ageGroup, level,
+            (SELECT json_group_array(set_id) FROM (SELECT set_id FROM category_station_sets WHERE category_id = c.id ORDER BY set_id)) AS stationSetIds
+     FROM categories c WHERE competition_id = $1
      ORDER BY id`,
     [competitionId],
   );
+  const rows: Category[] = raw.map((row) => ({ ...row, stationSetIds: JSON.parse(row.stationSetIds) as number[] }));
   const named = rows.map((row) => (row.ageGroup ? { ...row, name: categoryName(row.ageGroup, row, row.level) } : row));
   return groupBySubgroup(named).flatMap((group) => group.categoryIndexes.map((i) => named[i]!));
 }
@@ -62,7 +67,7 @@ type LibraryLevel = CategoryRules & { ageGroup: string; level: string };
 
 /**
  * Copies the chosen library levels, and sub-groups without levels, into a competition (a snapshot:
- * later library edits don't affect it), scored on the competition's first station set.
+ * later library edits don't affect it); a trigger (0012) puts each on the competition's first station set.
  * One INSERT, so either every category is added or none is.
  */
 export async function addCategoriesFromLibrary(args: { competitionId: number; levelIds: number[]; subgroupIds: number[] }): Promise<void> {
@@ -83,19 +88,23 @@ export async function addCategoriesFromLibrary(args: { competitionId: number; le
   );
   if (levels.length === 0) return; // all deleted from the library meanwhile
 
-  const [firstSet] = await conn.select<{ id: number }[]>("SELECT MIN(id) AS id FROM station_sets WHERE competition_id = $1", [args.competitionId]);
-  const COLUMNS = 8;
+  const COLUMNS = 7;
   const rows = levels.map((_, row) => `(${Array.from({ length: COLUMNS }, (_, col) => `$${row * COLUMNS + col + 1}`).join(", ")})`);
-  const values = levels.flatMap((l) => [args.competitionId, categoryName(l.ageGroup, l, l.level), l.gender, l.minAge, l.maxAge, l.ageGroup, l.level, firstSet?.id ?? null]);
+  const values = levels.flatMap((l) => [args.competitionId, categoryName(l.ageGroup, l, l.level), l.gender, l.minAge, l.maxAge, l.ageGroup, l.level]);
   await withConstraintMessages(
-    conn.execute(`INSERT INTO categories (competition_id, name, gender, min_age, max_age, age_group, level, station_set_id) VALUES ${rows.join(", ")}`, values),
+    conn.execute(`INSERT INTO categories (competition_id, name, gender, min_age, max_age, age_group, level) VALUES ${rows.join(", ")}`, values),
     { unique: "This competition already has a category with one of those names. Nothing was added." },
   );
 }
 
-/** Switches the station set a category is scored on. Reps on the old set are kept (and come back if switched back). */
-export async function setCategoryStationSet({ categoryId, stationSetId }: { categoryId: number; stationSetId: number | null }): Promise<void> {
-  await (await db()).execute("UPDATE categories SET station_set_id = $1 WHERE id = $2", [stationSetId, categoryId]);
+/**
+ * Adds or removes one of the station sets a category is scored on. Reps recorded on a removed set
+ * are kept, and come back if the set is added again.
+ */
+export async function setCategoryUsesStationSet({ categoryId, setId, used }: { categoryId: number; setId: number; used: boolean }): Promise<void> {
+  const conn = await db();
+  if (used) await conn.execute("INSERT OR IGNORE INTO category_station_sets (category_id, set_id) VALUES ($1, $2)", [categoryId, setId]);
+  else await conn.execute("DELETE FROM category_station_sets WHERE category_id = $1 AND set_id = $2", [categoryId, setId]);
 }
 
 /**

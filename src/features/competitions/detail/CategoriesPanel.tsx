@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Tags, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LayersIcon } from "@/components/icons/layers";
 import { SquarePenIcon } from "@/components/icons/square-pen";
@@ -13,6 +12,7 @@ import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import { CATEGORY_GENDER_LABELS, formatAgeRange } from "@/lib/labels";
 import { ROW_ENTER, staggerStyle } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import type { CompetitionPermissions } from "../permissions";
 import { useCategoryMutations } from "../useCompetitions";
 import { AddCategoriesDialog } from "./AddCategoriesDialog";
@@ -27,7 +27,7 @@ interface CategoriesPanelProps {
 
 export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: CategoriesPanelProps) {
   const { competition, categories, entries, stationSets } = setup;
-  const { remove, setStationSet } = useCategoryMutations();
+  const { remove, setUsesStationSet } = useCategoryMutations();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [removing, setRemoving] = useState<Category | null>(null);
@@ -74,7 +74,7 @@ export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: Cat
                   <TableHead className="pl-4">Category</TableHead>
                   <TableHead>Gender</TableHead>
                   <TableHead>Age</TableHead>
-                  {fitnessChallenge && <TableHead className="w-44">Station set</TableHead>}
+                  {fitnessChallenge && <TableHead className="w-52">Station sets</TableHead>}
                   <TableHead className="text-right">Athletes</TableHead>
                   {editable && <TableHead className="w-24" />}
                 </TableRow>
@@ -87,26 +87,34 @@ export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: Cat
                     <TableCell>{formatAgeRange(category)}</TableCell>
                     {fitnessChallenge && (
                       <TableCell>
-                        {editable ? (
-                          // Switching keeps the reps recorded on the old set; they come back if switched back.
-                          <Select
-                            value={category.stationSetId?.toString() ?? ""}
-                            onValueChange={(value) => setStationSet.mutate({ categoryId: category.id, stationSetId: Number(value) })}
-                          >
-                            <SelectTrigger className="w-full" aria-label={`Station set for ${category.name}`}>
-                              <SelectValue placeholder="Pick a set…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {stationSets.map((set) => (
-                                <SelectItem key={set.id} value={set.id.toString()}>
-                                  {set.name} <span className="text-muted-foreground">· {set.stations.length} stations</span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          (stationSets.find((s) => s.id === category.stationSetId)?.name ?? "—")
-                        )}
+                        {/* One chip per set; a category can use several (each ranked, plus overall). */}
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Station sets for ${category.name}`}>
+                          {stationSets.map((set) => {
+                            const used = category.stationSetIds.includes(set.id);
+                            return editable ? (
+                              <button
+                                key={set.id}
+                                type="button"
+                                aria-pressed={used}
+                                title={`${set.stations.length} stations`}
+                                onClick={() => setUsesStationSet.mutate({ categoryId: category.id, setId: set.id, used: !used })}
+                                className={cn(
+                                  "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+                                  used ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                )}
+                              >
+                                {set.name}
+                              </button>
+                            ) : (
+                              used && (
+                                <span key={set.id} className="rounded-full border px-2.5 py-0.5 text-xs font-medium">
+                                  {set.name}
+                                </span>
+                              )
+                            );
+                          })}
+                          {!editable && category.stationSetIds.length === 0 && "—"}
+                        </div>
                       </TableCell>
                     )}
                     <TableCell className="text-right tabular-nums">{categoryEntries(category.id).length}</TableCell>
@@ -125,9 +133,10 @@ export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: Cat
               </TableBody>
             </Table>
           </div>
-          {fitnessChallenge && editable && competition.status === "running" && (
+          {fitnessChallenge && editable && stationSets.length > 1 && (
             <p className="text-xs text-muted-foreground">
-              Switching a category to another station set keeps the reps recorded on the old one; they come back if you switch back.
+              Click a set to add it to or remove it from a category. A category with several sets is ranked per set and overall. Removing a set
+              keeps the reps recorded on it; they come back if you add it again.
             </p>
           )}
         </>

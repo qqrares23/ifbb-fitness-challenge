@@ -5,29 +5,27 @@ import { PhotoHint } from "@/features/exercises/ExercisePhotoButton";
 import { useExercises } from "@/features/exercises/useExercises";
 import { useFlipAnimation } from "@/hooks/useFlipAnimation";
 import { cn } from "@/lib/utils";
-import type { FitnessChallengeStandings } from "../standings";
+import { hasReps, type SetStandings } from "../standings";
 import { useResultMutations } from "../useCompetitions";
 import { AthleteCell, leaderRow } from "./AthleteCell";
 import { PlaceBadge } from "./PlaceBadge";
 
 interface RepsGridProps {
   competitionId: number;
-  standings: FitnessChallengeStandings;
+  /** One station set of the category, with its ranking. */
+  set: SetStandings;
   editable: boolean;
 }
 
 /**
- * Athletes × the stations of their category's set, in ranking order: rows move up as reps come
- * in (gliding, so a judge can follow them). Athletes without any reps yet are unplaced.
+ * Athletes × the stations of one of their category's sets, in that set's ranking order: rows move
+ * up as reps come in (gliding, so a judge can follow them). Athletes without any reps are unplaced.
  */
-export function RepsGrid({ competitionId, standings, editable }: RepsGridProps) {
+export function RepsGrid({ competitionId, set, editable }: RepsGridProps) {
   const { setScore } = useResultMutations(competitionId);
   const photos = new Map((useExercises().data ?? []).map((e) => [e.id, e.photo]));
-  const { stationSet, rows } = standings;
+  const { stationSet, rows } = set;
   const flip = useFlipAnimation<HTMLTableRowElement>(rows.map((r) => r.entry.id));
-  if (!stationSet) {
-    return <p className="p-6 text-center text-sm text-muted-foreground">Pick a station set for this category in the Categories tab.</p>;
-  }
   const { stations } = stationSet;
 
   return (
@@ -50,8 +48,9 @@ export function RepsGrid({ competitionId, standings, editable }: RepsGridProps) 
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map(({ entry, perStation, totalReps, place }) => {
-          const ranked = [...perStation.values()].some((reps) => reps !== null);
+        {rows.map((row) => {
+          const { entry, perStation, totalReps, place } = row;
+          const ranked = hasReps(row);
           const leader = ranked && place === 1;
           return (
             <TableRow key={entry.id} ref={flip(entry.id)} className={cn("relative bg-card", leader && leaderRow)}>
