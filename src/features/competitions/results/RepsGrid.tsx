@@ -1,8 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CommitNumberInput } from "@/components/shared/CommitInput";
 import { MAX_REPS } from "@/db/scores";
+import { listName } from "@/lib/labels";
 import type { Station } from "@/db/stations";
-import type { FitnessChallengeStandings } from "../standings";
+import { inBibOrder, type FitnessChallengeStandings } from "../standings";
 import { LateEntryBadge } from "../CompetitionBadges";
 import { useResultMutations } from "../useCompetitions";
 
@@ -16,7 +17,7 @@ interface RepsGridProps {
 /** Athletes × stations, in bib order, so a judge can find an athlete without the rows moving as scores change. */
 export function RepsGrid({ competitionId, stations, standings, editable }: RepsGridProps) {
   const { setScore } = useResultMutations(competitionId);
-  const rows = [...standings.rows].sort((a, b) => a.entry.bibNumber - b.entry.bibNumber);
+  const rows = inBibOrder(standings.rows);
 
   return (
     <div className="overflow-x-auto surface">
@@ -39,7 +40,7 @@ export function RepsGrid({ competitionId, stations, standings, editable }: RepsG
             <TableRow key={entry.id}>
               <TableCell className="pl-4 font-semibold tabular-nums">{entry.bibNumber}</TableCell>
               <TableCell className="whitespace-nowrap">
-                {entry.lastName} {entry.firstName}
+                {listName(entry)}
                 {entry.lateEntry && <LateEntryBadge />}
               </TableCell>
               {stations.map(({ stationNumber }) => {

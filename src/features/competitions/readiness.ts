@@ -1,5 +1,6 @@
 import type { CompetitionSetup } from "@/db/competitions";
 import { eligibilityProblems } from "@/engine";
+import { fullName } from "@/lib/labels";
 
 export interface Readiness {
   /** Must all be fixed before the competition can start. */
@@ -35,7 +36,7 @@ export function competitionReadiness({ competition, stations, categories, entrie
     const category = categoryById.get(entry.categoryId);
     if (!category) continue;
     if (eligibilityProblems(entry, category, competition.date).length > 0) {
-      blocking.push(`#${entry.bibNumber} ${entry.firstName} ${entry.lastName} doesn't meet the rules of "${category.name}".`);
+      blocking.push(`#${entry.bibNumber} ${fullName(entry)} doesn't meet the rules of "${category.name}".`);
     }
   }
 

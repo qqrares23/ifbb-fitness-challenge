@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CompetitionSetup } from "@/db/competitions";
-import { competitionResults, groupBySubgroup, leaderboardRows } from "./standings";
+import { groupBySubgroup } from "@/db/categories";
+import { competitionResults, leaderboardRows } from "./standings";
 
 describe("groupBySubgroup", () => {
   it("groups levels under their sub-group in order, keeping pre-hierarchy categories on their own", () => {

@@ -3,6 +3,7 @@ import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
 import type { Station } from "@/db/stations";
 import { formatDuration } from "@/engine";
+import { fullName } from "@/lib/labels";
 import type { CompetitionResults } from "@/features/competitions/standings";
 
 export interface TableFormat {
@@ -20,7 +21,7 @@ export interface ResultsTables {
 const ATHLETE_HEAD = ["Nr Crt", "Athlete Name", "Country"];
 
 function athleteCells(entry: Entry, index: number): string[] {
-  return [String(index + 1), `${entry.firstName} ${entry.lastName}`, entry.country];
+  return [String(index + 1), fullName(entry), entry.country];
 }
 
 const orMissing = (value: string | null, format: TableFormat) => value ?? format.missing;

@@ -1,8 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TimeInput } from "@/components/shared/CommitInput";
 import { formatDuration } from "@/engine";
-import { countryName } from "@/lib/countries";
-import type { SpeedFitStandings } from "../standings";
+import { CountryLabel } from "@/components/shared/CountryLabel";
+import { listName } from "@/lib/labels";
+import { inBibOrder, type SpeedFitStandings } from "../standings";
 import { LateEntryBadge } from "../CompetitionBadges";
 import { useResultMutations } from "../useCompetitions";
 import { PlaceBadge } from "./PlaceBadge";
@@ -16,7 +17,7 @@ interface TimesTableProps {
 /** Speed Fit: one time per athlete, in bib order so rows don't move while times are typed. */
 export function TimesTable({ competitionId, standings, editable }: TimesTableProps) {
   const { setTime } = useResultMutations(competitionId);
-  const rows = [...standings.rows].sort((a, b) => a.entry.bibNumber - b.entry.bibNumber);
+  const rows = inBibOrder(standings.rows);
 
   return (
     <div className="overflow-hidden surface">
@@ -35,11 +36,11 @@ export function TimesTable({ competitionId, standings, editable }: TimesTablePro
             <TableRow key={entry.id}>
               <TableCell className="pl-4 font-semibold tabular-nums">{entry.bibNumber}</TableCell>
               <TableCell className="whitespace-nowrap font-medium">
-                {entry.lastName} {entry.firstName}
+                {listName(entry)}
                 {entry.lateEntry && <LateEntryBadge />}
               </TableCell>
               <TableCell>
-                {countryName(entry.country)} <span className="text-xs text-muted-foreground">{entry.country}</span>
+                <CountryLabel code={entry.country} />
               </TableCell>
               <TableCell className="text-center tabular-nums">
                 {editable ? (

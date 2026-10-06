@@ -47,6 +47,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0007_multiple_levels.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "unique_subgroups",
+            sql: include_str!("../migrations/0008_unique_subgroups.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

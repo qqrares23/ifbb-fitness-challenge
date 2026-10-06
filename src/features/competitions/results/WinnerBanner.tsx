@@ -1,5 +1,6 @@
 import { Trophy } from "lucide-react";
 import { countryName } from "@/lib/countries";
+import { fullName } from "@/lib/labels";
 import type { LeaderboardRow } from "../standings";
 
 /** The current leader(s) of a category, updated live. Hidden until someone has a result. */
@@ -24,7 +25,7 @@ export function WinnerBanner({ rows, finished }: { rows: LeaderboardRow[]; finis
         {leaders.map(({ entry, value }) => (
           <p key={entry.id} className="truncate">
             <span className="font-heading text-lg font-semibold">
-              {entry.firstName} {entry.lastName}
+              {fullName(entry)}
             </span>
             <span className="ml-2 text-sm text-muted-foreground">{countryName(entry.country)}</span>
             <span className="ml-3 font-semibold tabular-nums">{value}</span>

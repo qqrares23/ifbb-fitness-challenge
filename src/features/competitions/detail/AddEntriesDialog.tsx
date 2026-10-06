@@ -11,7 +11,7 @@ import { ageOn, eligibilityProblems } from "@/engine";
 import { AthleteFormDialog } from "@/features/athletes/AthleteFormDialog";
 import { useAthletes } from "@/features/athletes/useAthletes";
 import { countryName } from "@/lib/countries";
-import { describeCategoryRules, SEX_LABELS } from "@/lib/labels";
+import { describeCategoryRules, listName, SEX_LABELS } from "@/lib/labels";
 import { filterBySearch } from "@/lib/search";
 import { useEntryMutations } from "../useCompetitions";
 
@@ -106,7 +106,7 @@ function AddEntriesForm({ setup, initialCategoryId, onDone }: AddEntriesFormProp
         <CheckList
           items={visible.map(({ athlete, problems }) => ({
             id: athlete.id,
-            label: `${athlete.lastName} ${athlete.firstName}`,
+            label: listName(athlete),
             detail: `${SEX_LABELS[athlete.sex]} · ${ageOn(athlete.dateOfBirth, competition.date)} years · ${athlete.country}`,
             disabledReason: problems.length > 0 ? problems.join(" ") : undefined,
           }))}

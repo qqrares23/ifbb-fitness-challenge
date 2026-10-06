@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { Input } from "@/components/ui/input";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import { FormField } from "@/components/shared/FormField";
 import type { Competition, CompetitionKind, NewCompetitionInput } from "@/db/competitions";
+import { useFormState } from "@/hooks/useFormState";
 import { todayIso } from "@/lib/dates";
 import { COMPETITION_KIND_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -39,27 +39,22 @@ export function CompetitionFormDialog({ competition, open, onOpenChange }: Compe
 function CompetitionForm({ competition, onDone }: { competition: Competition | null; onDone: () => void }) {
   const navigate = useNavigate();
   const { create, update } = useCompetitionMutations();
-  const [values, setValues] = useState<NewCompetitionInput>(
+  const { values, set, submitted, onSubmit } = useFormState<NewCompetitionInput>(
     competition ?? { name: "", date: todayIso(), location: "", kind: "fitness_challenge" },
   );
-  const [submitted, setSubmitted] = useState(false);
   const errors = {
     name: submitted && !values.name.trim() ? "Name is required." : undefined,
     date: submitted && !values.date ? "Date is required." : undefined,
   };
 
-  const set = <K extends keyof NewCompetitionInput>(key: K, value: NewCompetitionInput[K]) => setValues((v) => ({ ...v, [key]: value }));
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitted(true);
+  const handleSubmit = onSubmit(() => {
     if (!values.name.trim() || !values.date) return;
     void saveAndClose(async () => {
       if (competition) return update.mutateAsync({ ...values, id: competition.id });
       const id = await create.mutateAsync(values);
       navigate(`/competitions/${id}`);
     }, onDone);
-  }
+  });
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4" noValidate>

@@ -1,14 +1,13 @@
 import { Users } from "lucide-react";
+import { CountryLabel } from "@/components/shared/CountryLabel";
 import { LibraryPage } from "@/components/shared/LibraryPage";
 import type { Athlete } from "@/db/athletes";
 import { ageOn } from "@/engine";
 import { countryName } from "@/lib/countries";
 import { formatDate, todayIso } from "@/lib/dates";
-import { SEX_LABELS } from "@/lib/labels";
+import { fullName, SEX_LABELS } from "@/lib/labels";
 import { AthleteFormDialog } from "./AthleteFormDialog";
 import { useAthleteMutations, useAthletes } from "./useAthletes";
-
-const fullName = (a: Athlete) => `${a.firstName} ${a.lastName}`;
 
 export function AthletesPage() {
   const { remove } = useAthleteMutations();
@@ -31,9 +30,7 @@ export function AthletesPage() {
         {
           header: "Country",
           cell: (a) => (
-            <>
-              {countryName(a.country)} <span className="text-xs text-muted-foreground">{a.country}</span>
-            </>
+<CountryLabel code={a.country} />
           ),
         },
       ]}

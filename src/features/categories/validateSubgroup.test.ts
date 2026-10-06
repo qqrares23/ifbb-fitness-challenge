@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryName, categoryTitle } from "@/lib/labels";
+import { categoryName, categoryTitle, subgroupName } from "@/lib/labels";
 import { validateSubgroup } from "./validateSubgroup";
 
 const form = { gender: "male", minAge: "14", maxAge: "23" } as const;
@@ -23,6 +23,16 @@ describe("category naming", () => {
   it("names a competition category after its age group, sub-group and level", () => {
     expect(categoryName("Junior", juniorMen, "Gold")).toBe("Junior Men 14–23 · Gold");
     expect(categoryName("Masters", { gender: "female", minAge: 40, maxAge: null }, "Bronze")).toBe("Masters Women 40+ · Bronze");
+  });
+
+  it("doesn't repeat what the age group name already says (libraries upgraded from flat categories)", () => {
+    const juniors = { gender: "male", minAge: 16, maxAge: 20 } as const;
+    expect(subgroupName("Juniors Men 16–20", juniors)).toBe("Juniors Men 16–20");
+    expect(subgroupName("Juniors Male 16-20", juniors)).toBe("Juniors Male 16-20");
+    expect(subgroupName("Masters 40+", { gender: "female", minAge: 40, maxAge: null })).toBe("Masters 40+ Women");
+    // "Women" contains "men", and "116–20" contains "16–20": neither counts as already said.
+    expect(subgroupName("Women Open", juniors)).toBe("Women Open Men 16–20");
+    expect(subgroupName("Cup 116–20", juniors)).toBe("Cup 116–20 Men 16–20");
   });
 
   it("titles it for official results, without doubling the word Level", () => {

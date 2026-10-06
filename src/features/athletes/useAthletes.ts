@@ -2,8 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createAthlete, deleteAthlete, listAthletes, updateAthlete, type Athlete } from "@/db/athletes";
 import { queryKeys } from "@/db/queryKeys";
 import { useDbMutation } from "@/hooks/useDbMutation";
-
-const fullName = (a: Pick<Athlete, "firstName" | "lastName">) => `${a.firstName.trim()} ${a.lastName.trim()}`;
+import { fullName } from "@/lib/labels";
 
 export function useAthletes() {
   return useQuery({ queryKey: queryKeys.athletes, queryFn: listAthletes });

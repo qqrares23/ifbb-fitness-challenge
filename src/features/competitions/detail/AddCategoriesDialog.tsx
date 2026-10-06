@@ -28,17 +28,17 @@ function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone:
 
   // Names are unique per competition; the library is case-insensitive, so compare that way too.
   const taken = new Set(setup.categories.map((c) => c.name.toLowerCase()));
-  // One item per level, in library order (age group → sub-group → level).
+  // One item per level, in library order (age group → sub-group → level). Two library entries
+  // can compose the same name; only the first of them can be picked.
+  const listed = new Set<string>();
   const items = library.flatMap((group) =>
     group.subgroups.flatMap((subgroup) =>
       subgroup.levels.map((level) => {
         const name = categoryName(group.name, subgroup, level.name);
-        return {
-          id: level.id,
-          label: name,
-          detail: describeCategoryRules(subgroup),
-          disabledReason: taken.has(name.toLowerCase()) ? "Already in this competition." : undefined,
-        };
+        const key = name.toLowerCase();
+        const disabledReason = taken.has(key) ? "Already in this competition." : listed.has(key) ? "Same name as a category above." : undefined;
+        listed.add(key);
+        return { id: level.id, label: name, detail: describeCategoryRules(subgroup), disabledReason };
       }),
     ),
   );

@@ -1,4 +1,3 @@
-import { useState, type FormEvent } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CountryCombobox } from "@/components/shared/CountryCombobox";
@@ -6,6 +5,7 @@ import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormD
 import { FormField } from "@/components/shared/FormField";
 import type { Athlete, AthleteInput } from "@/db/athletes";
 import type { Sex } from "@/engine";
+import { useFormState } from "@/hooks/useFormState";
 import { todayIso } from "@/lib/dates";
 import { SEX_LABELS } from "@/lib/labels";
 import { useAthleteMutations } from "./useAthletes";
@@ -30,22 +30,17 @@ export function AthleteFormDialog({ athlete, open, onOpenChange }: AthleteFormDi
 
 function AthleteForm({ athlete, onDone }: { athlete: Athlete | null; onDone: () => void }) {
   const { create, update } = useAthleteMutations();
-  const [values, setValues] = useState<AthleteInput>(athlete ?? EMPTY);
-  const [submitted, setSubmitted] = useState(false);
+  const { values, set, submitted, onSubmit } = useFormState<AthleteInput>(athlete ?? EMPTY);
   const today = todayIso();
   const errors = submitted ? validateAthlete(values, today) : {};
 
-  const set = <K extends keyof AthleteInput>(key: K, value: AthleteInput[K]) => setValues((v) => ({ ...v, [key]: value }));
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitted(true);
+  const handleSubmit = onSubmit(() => {
     if (Object.keys(validateAthlete(values, today)).length > 0) return;
     void saveAndClose(
       () => (athlete ? update.mutateAsync({ ...values, id: athlete.id }) : create.mutateAsync(values)),
       onDone,
     );
-  }
+  });
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4" noValidate>

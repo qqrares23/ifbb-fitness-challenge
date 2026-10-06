@@ -1,5 +1,6 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useFlipAnimation } from "@/hooks/useFlipAnimation";
+import { listName } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { LeaderboardRow } from "../standings";
 import { PlaceBadge } from "./PlaceBadge";
@@ -37,9 +38,7 @@ export function Leaderboard({ rows, valueLabel }: LeaderboardProps) {
                 <PlaceBadge place={ranked ? place : null} />
               </TableCell>
               <TableCell>
-                <span className="font-medium">
-                  {entry.lastName} {entry.firstName}
-                </span>
+                <span className="font-medium">{listName(entry)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">#{entry.bibNumber}</span>
                 {note && <span className="block text-xs text-muted-foreground">{note}</span>}
               </TableCell>

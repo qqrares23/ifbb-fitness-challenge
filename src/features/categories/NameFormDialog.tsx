@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react";
 import { Input } from "@/components/ui/input";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import { FormField } from "@/components/shared/FormField";
+import { useFormState } from "@/hooks/useFormState";
 
 interface NameFormDialogProps {
   title: string;
@@ -28,20 +28,17 @@ export function NameFormDialog({ title, open, onOpenChange, ...props }: NameForm
 type NameFormProps = Omit<NameFormDialogProps, "title" | "open" | "onOpenChange"> & { onDone: () => void };
 
 function NameForm({ label, placeholder, submitLabel, initial, onSave, saving, onDone }: NameFormProps) {
-  const [name, setName] = useState(initial);
-  const [submitted, setSubmitted] = useState(false);
-  const error = submitted && !name.trim() ? "Name is required." : undefined;
+  const { values, set, submitted, onSubmit } = useFormState({ name: initial });
+  const error = submitted && !values.name.trim() ? "Name is required." : undefined;
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitted(true);
-    if (name.trim()) void saveAndClose(() => onSave(name), onDone);
-  }
+  const handleSubmit = onSubmit(() => {
+    if (values.name.trim()) void saveAndClose(() => onSave(values.name), onDone);
+  });
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4" noValidate>
       <FormField id="library-name" label={label} error={error}>
-        <Input id="library-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} autoFocus />
+        <Input id="library-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder={placeholder} autoFocus />
       </FormField>
       <FormActions onCancel={onDone} submitLabel={submitLabel} saving={saving} />
     </form>

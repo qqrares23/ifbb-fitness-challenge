@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import { FormField } from "@/components/shared/FormField";
 import type { AgeGroup, AgeSubgroup } from "@/db/categoryLibrary";
 import type { CategoryGender } from "@/engine";
+import { useFormState } from "@/hooks/useFormState";
 import { CATEGORY_GENDER_LABELS } from "@/lib/labels";
 import { useCategoryLibraryMutations } from "./useCategoryLibrary";
 import { validateSubgroup, type SubgroupFormValues } from "./validateSubgroup";
@@ -40,23 +40,18 @@ function toForm(subgroup: AgeSubgroup | null): SubgroupFormValues {
 
 function SubgroupForm({ ageGroup, subgroup, onDone }: { ageGroup: AgeGroup; subgroup: AgeSubgroup | null; onDone: () => void }) {
   const { createSubgroup, updateSubgroup } = useCategoryLibraryMutations();
-  const [values, setValues] = useState(() => toForm(subgroup));
-  const [submitted, setSubmitted] = useState(false);
+  const { values, set, submitted, onSubmit } = useFormState(() => toForm(subgroup));
   const validation = validateSubgroup(values);
   const errors = submitted && !validation.ok ? validation.errors : {};
 
-  const set = (key: keyof SubgroupFormValues, value: string) => setValues((v) => ({ ...v, [key]: value }));
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitted(true);
+  const handleSubmit = onSubmit(() => {
     if (!validation.ok) return;
     const rules = validation.value;
     void saveAndClose(
       () => (subgroup ? updateSubgroup.mutateAsync({ ...rules, id: subgroup.id }) : createSubgroup.mutateAsync({ ...rules, ageGroupId: ageGroup.id })),
       onDone,
     );
-  }
+  });
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4" noValidate>

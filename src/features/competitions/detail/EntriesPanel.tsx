@@ -6,14 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { UserPlusIcon } from "@/components/icons/user-plus";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { CommitNumberInput } from "@/components/shared/CommitInput";
+import { CountryLabel } from "@/components/shared/CountryLabel";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
 import { ageOn, eligibilityProblems } from "@/engine";
-import { countryName } from "@/lib/countries";
-import { describeCategoryRules } from "@/lib/labels";
+import { describeCategoryRules, fullName, listName } from "@/lib/labels";
 import { LateEntryBadge } from "../CompetitionBadges";
 import { canChangeCategory, type CompetitionPermissions } from "../permissions";
 import { useEntryMutations } from "../useCompetitions";
@@ -78,7 +78,7 @@ export function EntriesPanel({ setup, permissions, entryIdsWithResults }: Entrie
         title="Remove athlete?"
         description={
           removing
-            ? `#${removing.bibNumber} ${removing.firstName} ${removing.lastName} will be taken out of "${categories.find((c) => c.id === removing.categoryId)?.name}"` +
+            ? `#${removing.bibNumber} ${fullName(removing)} will be taken out of "${categories.find((c) => c.id === removing.categoryId)?.name}"` +
               (entryIdsWithResults.has(removing.id) ? ", and the results already recorded there will be deleted." : ".") +
               " Their other categories are not affected."
             : ""
@@ -139,14 +139,14 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
                     </TableCell>
                     <TableCell>
                       <span className="font-medium">
-                        {entry.lastName} {entry.firstName}
+                        {listName(entry)}
                       </span>
                       {entry.lateEntry && <LateEntryBadge />}
                       {problems.length > 0 && <span className="block text-xs text-destructive">{problems.join(" ")}</span>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{ageOn(entry.dateOfBirth, date)}</TableCell>
                     <TableCell>
-                      {countryName(entry.country)} <span className="text-xs text-muted-foreground">{entry.country}</span>
+                      <CountryLabel code={entry.country} />
                     </TableCell>
                     {editable && (
                       <TableCell title={movable ? undefined : "Has results already — the category can't change."}>

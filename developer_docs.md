@@ -169,7 +169,7 @@ age_groups ─< age_subgroups (sex, ages) ─< category_levels   (library; copie
 | `athletes` | `first_name`, `last_name` (non-blank), `date_of_birth` ISO date (`date(x) IS x`), `sex` ∈ male/female, `country` 3 upper-case letters |
 | `exercises` | `name` UNIQUE NOCASE, `description` |
 | `age_groups` | `name` UNIQUE NOCASE (Junior, Senior, Masters…) |
-| `age_subgroups` | `age_group_id` (CASCADE), `gender` ∈ male/female/mixed, `min_age`/`max_age` 0–120 or NULL, min ≤ max |
+| `age_subgroups` | `age_group_id` (CASCADE), `gender` ∈ male/female/mixed, `min_age`/`max_age` 0–120 or NULL, min ≤ max. Unique per age group + sex + ages (NULL = NULL) |
 | `category_levels` | `subgroup_id` (CASCADE), `name`, UNIQUE (`subgroup_id`, `name`) NOCASE |
 | `competitions` | `name`, `date`, `location`, `status` ∈ draft/running/finished, `kind` ∈ fitness_challenge/speed_fit, `started_at`, `finished_at` |
 | `competition_stations` | PK (`competition_id`, `station_number`), `exercise_id` nullable while in draft |
@@ -199,6 +199,7 @@ register it in `lib.rs` with the next `version`.
 | 4 | `0004_category_library.sql` | `category_presets`, seeded from existing categories |
 | 5 | `0005_late_entries.sql` | `entries.late_entry`; relaxes entry/category locks while running |
 | 6 | `0006_category_hierarchy.sql` | Library becomes age group → sub-group → level; each old preset becomes an age group with one sub-group (no levels); `categories.age_group`/`level` |
+| 8 | `0008_unique_subgroups.sql` | Merges duplicate sub-groups, then a unique index prevents new ones |
 | 7 | `0007_multiple_levels.sql` | Rebuilds `entries` (+ `scores`, `speed_fit_times`, all their triggers) so an athlete can enter several categories; bib triggers |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
@@ -280,15 +281,18 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
 - `lib/errors.ts` → `errorMessage()` strips sqlx's `error returned from database: (code: N)` prefix,
   so trigger messages reach the user cleanly.
 - Notable write patterns:
-  - **Bib allocation** (`addEntries`): one `INSERT … SELECT` that reuses the athlete's existing bib
-    in this competition, else `MAX + 1`, so it is atomic. `setEntryBib` changes the bib on all of
+  - **Bib allocation** (`addEntries`): one `WITH … INSERT … SELECT` over `json_each(athleteIds)`:
+    athletes already in the competition keep their bib, new ones get `MAX + ROW_NUMBER()`.
+    All-or-nothing. (tauri-plugin-sql uses a connection pool, so `BEGIN`/`COMMIT` across calls is
+    not reliable; keep multi-row writes to a single statement.) `setEntryBib` changes the bib on all of
     the athlete's entries in one statement.
   - **Results upsert** (`setScore`, `setTime`): `INSERT … ON CONFLICT DO UPDATE`. A `null` value deletes
     the row (clears the result).
   - **Station count** (`setStationCount`): an idempotent recursive-CTE `INSERT OR IGNORE`, then
     `DELETE … > count`. Re-running after a partial failure converges.
-  - **Category snapshot** (`addCategoriesFromLibrary(levelIds)`): reads each level with its sub-group
-    and age group, composes the name with `categoryName()` and inserts a copy. Later library edits
+  - **Category snapshot** (`addCategoriesFromLibrary(levelIds)`): reads the levels with their sub-group
+    and age group (`json_each`), composes names with `categoryName()` and inserts them in **one**
+    multi-row `INSERT`, so it is all-or-nothing. Later library edits
     never change a competition's rules.
   - **Status change** (`setCompetitionStatus`): stamps `started_at` (first start only) and `finished_at`.
 - `results.ts` returns a discriminated union `RecordedResults` (`scores` or `times`, depending on `kind`).
@@ -406,6 +410,10 @@ CompetitionDetailPage   load setup (["competitions", id])
 | `ConfirmDialog`, `EmptyState`, `RowActions`, `SearchInput`, `CountryCombobox` | Small reusable pieces. |
 | `useIconAnimation` / `AnimatedButton` | Lets the hover or focus of a whole button drive an animated icon. |
 | `useFlipAnimation` | FLIP reorder animation using `transform` only. Respects reduced motion. |
+| `useFormState` | Dialog form state: `values`, typed `set(key, value)`, `submitted`, `onSubmit(save)`. |
+| `CountryLabel` | Country name + small ISO code. |
+| `fullName` / `listName` (`lib/labels`) | "Ana Pop" for sentences, banners and exports; "Pop Ana" for tables and pick lists. |
+| `subgroupName` / `categoryName` / `categoryTitle` | Category naming; `subgroupName` skips sex/ages the age group name already states. |
 
 **Styling**: Tailwind 4 with theme tokens in `app/index.css` (OKLCH palette, IFBB navy `--primary`,
 an added `--gold` accent, and a `surface` utility for raised panels). All motion uses only opacity and
@@ -478,7 +486,8 @@ npm run tauri build   # installers in src-tauri/target/release/bundle/
 `npm run dev` alone serves the UI in a browser, but every DB call fails there because the Tauri IPC
 is missing. Use `tauri dev`.
 
-**Tests** cover only pure modules: `engine.test.ts`, `standings.test.ts`, `permissions.test.ts`,
+**Tests** cover only pure modules (plus `src/consistency.test.ts`, which checks values that must
+match across Rust, SQL and TypeScript: database URL, migration registration, version, limits): `engine.test.ts`, `standings.test.ts`, `permissions.test.ts`,
 `readiness.test.ts`, `standingsTable.test.ts` (tables, CSV and file names), `validateAthlete.test.ts`
 and `validateCategory.test.ts`. The SQL triggers and the React components have no automated tests.
 Exercise those manually in `tauri dev`.
@@ -488,8 +497,8 @@ Exercise those manually in `tauri dev`.
 
 ### Releasing
 
-1. Bump the version in **three** places: `package.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/tauri.conf.json`.
+1. Bump the version in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads
+   `package.json`; `src/consistency.test.ts` fails if Cargo differs).
 2. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `release.yml` runs typecheck and tests, then builds:
    - a macOS universal `.dmg`;
@@ -538,13 +547,10 @@ call `saveFile()` from `exportResults.ts`.
 
 ## 11. Known limitations and gotchas
 
-- **Multi-row writes are not transactional.** `addEntries` and `addCategoriesFromLibrary` insert
-  one row per statement in a loop. If a later row fails (e.g. a duplicate), the earlier rows stay
-  committed, and the UI reports only the error. The query invalidation still runs only on success,
-  so the screen may lag until the next refresh.
-- **`DATABASE_URL` is duplicated** in Rust and TS. A mismatch silently opens a second database
-  with no migrations applied.
-- **Version is duplicated** in three files (see Releasing).
+- **`DATABASE_URL` and the reps/time/age limits are written in two languages.** They can't share
+  one definition; `src/consistency.test.ts` fails if they drift.
+- **Lifecycle triggers repeat the same status lookup** in each trigger. That's the SQLite idiom;
+  copy an existing trigger when adding a rule.
 - **Single window, single writer** is assumed (`staleTime: Infinity`). Opening a second window or
   editing the DB externally would show stale data until something invalidates the cache.
 - **Age rule** is year-based by design (IFBB convention), not an exact birthday calculation.

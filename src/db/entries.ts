@@ -30,24 +30,24 @@ export async function listEntries(competitionId: number): Promise<Entry[]> {
 
 /**
  * Enters each athlete into the category. An athlete already in another category of this
- * competition keeps their bib; anyone new gets the next free bib number.
+ * competition keeps their bib; new athletes get the next free bib numbers, in the order given.
+ * One statement (bib allocation included), so either every athlete is entered or none is.
  */
 export async function addEntries(args: { competitionId: number; categoryId: number; athleteIds: number[] }): Promise<void> {
-  const conn = await db();
-  for (const athleteId of args.athleteIds) {
-    // Bib allocation and insert in one statement, so it is atomic.
-    await withConstraintMessages(
-      conn.execute(
-        `INSERT INTO entries (competition_id, category_id, athlete_id, bib_number)
-         SELECT $1, $2, $3, COALESCE(
-           (SELECT bib_number FROM entries WHERE competition_id = $1 AND athlete_id = $3 LIMIT 1),
-           (SELECT MAX(bib_number) FROM entries WHERE competition_id = $1) + 1,
-           1)`,
-        [args.competitionId, args.categoryId, athleteId],
-      ),
-      { unique: "That athlete is already entered in this category." },
-    );
-  }
+  await withConstraintMessages(
+    (await db()).execute(
+      `WITH picked AS (SELECT CAST(value AS INTEGER) AS athlete_id, key AS position FROM json_each($3)),
+            existing AS (SELECT athlete_id, MIN(bib_number) AS bib FROM entries WHERE competition_id = $1 GROUP BY athlete_id),
+            next_free AS (SELECT COALESCE(MAX(bib_number), 0) AS bib FROM entries WHERE competition_id = $1)
+       INSERT INTO entries (competition_id, category_id, athlete_id, bib_number)
+       SELECT $1, $2, p.athlete_id,
+              COALESCE(e.bib, (SELECT bib FROM next_free) + ROW_NUMBER() OVER (PARTITION BY e.bib IS NULL ORDER BY p.position))
+       FROM picked p LEFT JOIN existing e ON e.athlete_id = p.athlete_id
+       ORDER BY p.position`,
+      [args.competitionId, args.categoryId, JSON.stringify(args.athleteIds)],
+    ),
+    { unique: "One of those athletes is already entered in this category. Nobody was entered." },
+  );
 }
 
 export async function setEntryCategory(args: { entryId: number; categoryId: number }): Promise<void> {

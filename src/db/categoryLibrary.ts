@@ -58,17 +58,20 @@ export async function deleteAgeGroup(id: number): Promise<void> {
   await (await db()).execute("DELETE FROM age_groups WHERE id = $1", [id]);
 }
 
+const duplicateSubgroup = { unique: "This age group already has a sub-group with that sex and ages." };
+
 export async function createSubgroup({ ageGroupId, gender, minAge, maxAge }: CategoryRules & { ageGroupId: number }): Promise<void> {
-  await (await db()).execute("INSERT INTO age_subgroups (age_group_id, gender, min_age, max_age) VALUES ($1, $2, $3, $4)", [
-    ageGroupId,
-    gender,
-    minAge,
-    maxAge,
-  ]);
+  await withConstraintMessages(
+    (await db()).execute("INSERT INTO age_subgroups (age_group_id, gender, min_age, max_age) VALUES ($1, $2, $3, $4)", [ageGroupId, gender, minAge, maxAge]),
+    duplicateSubgroup,
+  );
 }
 
 export async function updateSubgroup({ id, gender, minAge, maxAge }: CategoryRules & { id: number }): Promise<void> {
-  await (await db()).execute("UPDATE age_subgroups SET gender = $1, min_age = $2, max_age = $3 WHERE id = $4", [gender, minAge, maxAge, id]);
+  await withConstraintMessages(
+    (await db()).execute("UPDATE age_subgroups SET gender = $1, min_age = $2, max_age = $3 WHERE id = $4", [gender, minAge, maxAge, id]),
+    duplicateSubgroup,
+  );
 }
 
 /** Also deletes its levels. */

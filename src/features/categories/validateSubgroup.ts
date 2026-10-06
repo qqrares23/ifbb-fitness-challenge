@@ -11,11 +11,14 @@ export type SubgroupFormErrors = Partial<Record<keyof SubgroupFormValues, string
 
 export type SubgroupValidation = { ok: true; value: CategoryRules } | { ok: false; errors: SubgroupFormErrors };
 
+/** Matches the CHECKs on category ages in the migrations. */
+export const MAX_AGE = 120;
+
 function parseAge(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (!trimmed) return null;
   const age = Number(trimmed);
-  return Number.isInteger(age) && age >= 0 && age <= 120 ? age : undefined;
+  return Number.isInteger(age) && age >= 0 && age <= MAX_AGE ? age : undefined;
 }
 
 export function validateSubgroup(form: SubgroupFormValues): SubgroupValidation {
@@ -23,8 +26,8 @@ export function validateSubgroup(form: SubgroupFormValues): SubgroupValidation {
   const minAge = parseAge(form.minAge);
   const maxAge = parseAge(form.maxAge);
 
-  if (minAge === undefined) errors.minAge = "Enter a whole number from 0 to 120, or leave empty.";
-  if (maxAge === undefined) errors.maxAge = "Enter a whole number from 0 to 120, or leave empty.";
+  if (minAge === undefined) errors.minAge = `Enter a whole number from 0 to ${MAX_AGE}, or leave empty.`;
+  if (maxAge === undefined) errors.maxAge = `Enter a whole number from 0 to ${MAX_AGE}, or leave empty.`;
   if (minAge != null && maxAge != null && minAge > maxAge) errors.maxAge = "Maximum age can't be below the minimum.";
 
   if (Object.keys(errors).length > 0 || minAge === undefined || maxAge === undefined) return { ok: false, errors };

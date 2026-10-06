@@ -4,12 +4,12 @@ import { UserPlusIcon } from "@/components/icons/user-plus";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Category } from "@/db/categories";
+import { groupBySubgroup } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import { describeCategoryRules } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { AddEntriesDialog } from "../detail/AddEntriesDialog";
-import { groupBySubgroup, leaderboardRows, type CompetitionResults } from "../standings";
+import { leaderboardRows, type CompetitionResults } from "../standings";
 import { Leaderboard } from "./Leaderboard";
 import { RepsGrid } from "./RepsGrid";
 import { TimesTable } from "./TimesTable";
@@ -26,21 +26,21 @@ interface ResultsPanelProps {
 export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [enteringLate, setEnteringLate] = useState(false);
-  // Both challenge types share these fields; widening the union lets one tab bar serve both.
-  const categories: { category: Category; missingResults: number; rows: unknown[] }[] = results.categories;
+  // A challenge-neutral summary of each category, so one tab bar serves both challenge types.
+  const categories = results.categories.map(({ category, missingResults, rows }) => ({ category, missingResults, athletes: rows.length }));
   const index = Math.max(0, categories.findIndex((c) => c.category.id === categoryId));
   const current = categories[index];
   if (!current) return null;
 
   const speedFit = results.kind === "speed_fit";
-  const expected = current.rows.length * (speedFit ? 1 : setup.stations.length);
+  const expected = current.athletes * (speedFit ? 1 : setup.stations.length);
   const rows = leaderboardRows(results, index);
 
   // Sub-group → level navigation, so officials can move on as soon as a category is done.
   const subgroups = groupBySubgroup(categories.map((c) => c.category));
   const currentSubgroup = subgroups.find((g) => g.categoryIndexes.includes(index))!;
-  const isDone = (i: number) => categories[i]!.rows.length > 0 && categories[i]!.missingResults === 0;
-  const subgroupDone = (indexes: number[]) => indexes.some((i) => categories[i]!.rows.length > 0) && indexes.every((i) => isDone(i) || categories[i]!.rows.length === 0);
+  const isDone = (i: number) => categories[i]!.athletes > 0 && categories[i]!.missingResults === 0;
+  const subgroupDone = (indexes: number[]) => indexes.some((i) => categories[i]!.athletes > 0) && indexes.every((i) => isDone(i) || categories[i]!.athletes === 0);
   const goTo = (i: number) => setCategoryId(categories[i]!.category.id);
   const previous = categories[index - 1];
   const next = categories[index + 1];
@@ -49,7 +49,7 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   function openSubgroup(key: string) {
     const indexes = subgroups.find((g) => g.key === key)!.categoryIndexes;
     // Land on the first level still waiting for results.
-    goTo(indexes.find((i) => !isDone(i) && categories[i]!.rows.length > 0) ?? indexes[0]!);
+    goTo(indexes.find((i) => !isDone(i) && categories[i]!.athletes > 0) ?? indexes[0]!);
   }
 
   return (
@@ -104,7 +104,7 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
           {currentDone && <span className="mr-1 font-medium text-emerald-700">All results in.</span>}
-          {describeCategoryRules(current.category)} · {current.rows.length} athletes · {expected - current.missingResults} of {expected}{" "}
+          {describeCategoryRules(current.category)} · {current.athletes} athletes · {expected - current.missingResults} of {expected}{" "}
           {speedFit ? "times" : "station results"} recorded
         </p>
         {/* Spotting a missed athlete happens here, mid-competition, so entering them is one click away. */}
@@ -115,7 +115,7 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
         )}
       </div>
 
-      {current.rows.length === 0 ? (
+      {current.athletes === 0 ? (
         <p className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">No athletes in this category.</p>
       ) : (
         // Keyed by category so switching tabs plays the entrance animation.
