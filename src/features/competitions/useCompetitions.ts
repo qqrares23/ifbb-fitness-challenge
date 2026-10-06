@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { addCategoriesFromLibrary, deleteCategory } from "@/db/categories";
+import { addCategoriesFromLibrary, deleteCategory, setCategoryStationSet, updateCategoryRules } from "@/db/categories";
 import {
   createCompetition,
   deleteCompetition,
@@ -15,10 +15,11 @@ import { queryKeys } from "@/db/queryKeys";
 import { listResults } from "@/db/results";
 import { setScore } from "@/db/scores";
 import { setTime } from "@/db/speedFitTimes";
-import { setStationCount, setStationExercise } from "@/db/stations";
+import { createStationSet, deleteStationSet, renameStationSet, setStationCount, setStationExercise } from "@/db/stations";
 import { useDbMutation } from "@/hooks/useDbMutation";
 
-// Every write below touches data shown under the `competitions` root (list counts + setup).
+// Every write below touches data shown under the `competitions` root (list counts + setup);
+// results are nested under it, so removing stations or categories refreshes them too.
 const invalidates = [queryKeys.competitions];
 
 export function useCompetitions() {
@@ -50,6 +51,9 @@ export function useCompetitionMutations() {
 
 export function useStationMutations() {
   return {
+    createSet: useDbMutation(createStationSet, { invalidates, success: "Station set added." }),
+    renameSet: useDbMutation(renameStationSet, { invalidates, success: ({ name }) => `Renamed to "${name.trim()}".` }),
+    deleteSet: useDbMutation(deleteStationSet, { invalidates, success: "Station set deleted." }),
     setCount: useDbMutation(setStationCount, { invalidates }),
     setExercise: useDbMutation(setStationExercise, { invalidates }),
   };
@@ -58,8 +62,10 @@ export function useStationMutations() {
 export function useCategoryMutations() {
   const count = (n: number) => `${n} categor${n === 1 ? "y" : "ies"}`;
   return {
-    addFromLibrary: useDbMutation(addCategoriesFromLibrary, { invalidates, success: ({ levelIds }) => `${count(levelIds.length)} added.` }),
+    addFromLibrary: useDbMutation(addCategoriesFromLibrary, { invalidates, success: ({ levelIds, subgroupIds }) => `${count(levelIds.length + subgroupIds.length)} added.` }),
     remove: useDbMutation(deleteCategory, { invalidates, success: "Category removed from the competition." }),
+    setStationSet: useDbMutation(setCategoryStationSet, { invalidates }),
+    updateRules: useDbMutation(updateCategoryRules, { invalidates, success: "Category rules saved." }),
   };
 }
 

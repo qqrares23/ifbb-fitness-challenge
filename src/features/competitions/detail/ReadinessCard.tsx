@@ -1,7 +1,8 @@
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-react";
 import type { Readiness } from "../readiness";
 
-export function ReadinessCard({ readiness }: { readiness: Readiness }) {
+/** Setup problems: before the start they block it; once started, they still need fixing. */
+export function ReadinessCard({ readiness, started }: { readiness: Readiness; started: boolean }) {
   const { blocking, warnings } = readiness;
 
   return (
@@ -12,7 +13,7 @@ export function ReadinessCard({ readiness }: { readiness: Readiness }) {
         </p>
       ) : (
         <>
-          <p className="mb-2 font-medium">Before the competition can start:</p>
+          <p className="mb-2 font-medium">{started ? "Needs attention:" : "Before the competition can start:"}</p>
           <ul className="grid gap-1">
             {blocking.map((problem) => (
               <li key={problem} className="flex items-start gap-2 text-sm">

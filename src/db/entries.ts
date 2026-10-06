@@ -18,7 +18,7 @@ export interface Entry extends Omit<Athlete, "id"> {
 export async function listEntries(competitionId: number): Promise<Entry[]> {
   const rows = await (await db()).select<(Omit<Entry, "lateEntry"> & { lateEntry: number })[]>(
     `SELECT e.id, e.athlete_id AS athleteId, e.category_id AS categoryId, e.bib_number AS bibNumber, e.late_entry AS lateEntry,
-            a.first_name AS firstName, a.last_name AS lastName, a.date_of_birth AS dateOfBirth, a.sex, a.country
+            a.first_name AS firstName, a.last_name AS lastName, a.date_of_birth AS dateOfBirth, a.sex, a.country, a.club
      FROM entries e JOIN athletes a ON a.id = e.athlete_id
      WHERE e.competition_id = $1
      ORDER BY e.bib_number`,
@@ -29,22 +29,36 @@ export async function listEntries(competitionId: number): Promise<Entry[]> {
 }
 
 /**
- * Enters each athlete into the category. An athlete already in another category of this
- * competition keeps their bib; new athletes get the next free bib numbers, in the order given.
- * One statement (bib allocation included), so either every athlete is entered or none is.
+ * Enters athletes into the category. An athlete already in another category of this competition
+ * keeps their number (bib). Otherwise `bibNumbers[i]` sets athlete i's number by hand, and null
+ * means automatic: the next free numbers, in the order given (after any typed by hand).
+ * One statement, so either every athlete is entered or none is.
  */
-export async function addEntries(args: { competitionId: number; categoryId: number; athleteIds: number[] }): Promise<void> {
+export async function addEntries(args: {
+  competitionId: number;
+  categoryId: number;
+  athleteIds: number[];
+  bibNumbers?: (number | null)[];
+}): Promise<void> {
+  const picked = args.athleteIds.map((athleteId, i) => ({ a: athleteId, n: args.bibNumbers?.[i] ?? null }));
+  for (const { n } of picked) {
+    if (n !== null && (!Number.isInteger(n) || n < 1)) throw new Error("A number must be a whole number of 1 or more.");
+  }
   await withConstraintMessages(
     (await db()).execute(
-      `WITH picked AS (SELECT CAST(value AS INTEGER) AS athlete_id, key AS position FROM json_each($3)),
+      `WITH picked AS (
+              SELECT CAST(json_extract(value, '$.a') AS INTEGER) AS athlete_id, json_extract(value, '$.n') AS bib, key AS position
+              FROM json_each($3)),
             existing AS (SELECT athlete_id, MIN(bib_number) AS bib FROM entries WHERE competition_id = $1 GROUP BY athlete_id),
-            next_free AS (SELECT COALESCE(MAX(bib_number), 0) AS bib FROM entries WHERE competition_id = $1)
+            next_free AS (
+              SELECT MAX(COALESCE((SELECT MAX(bib_number) FROM entries WHERE competition_id = $1), 0),
+                         COALESCE((SELECT MAX(bib) FROM picked), 0)) AS bib)
        INSERT INTO entries (competition_id, category_id, athlete_id, bib_number)
        SELECT $1, $2, p.athlete_id,
-              COALESCE(e.bib, (SELECT bib FROM next_free) + ROW_NUMBER() OVER (PARTITION BY e.bib IS NULL ORDER BY p.position))
+              COALESCE(e.bib, p.bib, (SELECT bib FROM next_free) + ROW_NUMBER() OVER (PARTITION BY e.bib IS NULL AND p.bib IS NULL ORDER BY p.position))
        FROM picked p LEFT JOIN existing e ON e.athlete_id = p.athlete_id
        ORDER BY p.position`,
-      [args.competitionId, args.categoryId, JSON.stringify(args.athleteIds)],
+      [args.competitionId, args.categoryId, JSON.stringify(picked)],
     ),
     { unique: "One of those athletes is already entered in this category. Nobody was entered." },
   );

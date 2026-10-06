@@ -1,8 +1,22 @@
 import type { CategoryRules } from "@/engine";
+import type { CompetitionKind } from "./competitions";
+
+/** Whose categories a library holds. */
+export type Federation = "ifbb" | "romania";
+
+/** One category library: a federation's categories for one challenge type. */
+export interface LibraryKey {
+  federation: Federation;
+  kind: CompetitionKind;
+}
 import { db } from "./client";
 import { withConstraintMessages } from "./errors";
 
-/** Age group (Junior, Senior…) → sub-groups by sex and age → levels (Bronze, Silver…). */
+/**
+ * Age group (Junior, Senior…) → sub-groups by sex and age → levels (Bronze, Silver…).
+ * Each federation (IFBB, Romania) has a library per challenge type (Fitness Challenge, Speed Fit).
+ * A sub-group with no levels is a category on its own (common for Speed Fit).
+ */
 export interface AgeGroup {
   id: number;
   name: string;
@@ -21,11 +35,11 @@ export interface CategoryLevel {
   name: string;
 }
 
-/** The whole library as a tree, everything in the order it was created. */
-export async function listCategoryLibrary(): Promise<AgeGroup[]> {
+/** One library as a tree, everything in the order it was created. */
+export async function listCategoryLibrary({ federation, kind }: LibraryKey): Promise<AgeGroup[]> {
   const conn = await db();
   const [groups, subgroups, levels] = await Promise.all([
-    conn.select<Omit<AgeGroup, "subgroups">[]>("SELECT id, name FROM age_groups ORDER BY id"),
+    conn.select<Omit<AgeGroup, "subgroups">[]>("SELECT id, name FROM age_groups WHERE federation = $1 AND kind = $2 ORDER BY id", [federation, kind]),
     conn.select<Omit<AgeSubgroup, "levels">[]>(
       "SELECT id, age_group_id AS ageGroupId, gender, min_age AS minAge, max_age AS maxAge FROM age_subgroups ORDER BY id",
     ),
@@ -33,6 +47,7 @@ export async function listCategoryLibrary(): Promise<AgeGroup[]> {
   ]);
   const tree = groups.map((g) => ({ ...g, subgroups: [] as AgeSubgroup[] }));
   const subgroupById = new Map<number, AgeSubgroup>();
+  // Sub-groups and levels of the other library find no parent here and are skipped.
   for (const s of subgroups) {
     const subgroup = { ...s, levels: [] };
     subgroupById.set(s.id, subgroup);
@@ -42,11 +57,14 @@ export async function listCategoryLibrary(): Promise<AgeGroup[]> {
   return tree;
 }
 
-const duplicateGroup = (name: string) => ({ unique: `An age group named "${name.trim()}" already exists.` });
+const duplicateGroup = (name: string) => ({ unique: `This library already has an age group named "${name.trim()}".` });
 const duplicateLevel = (name: string) => ({ unique: `This sub-group already has a level named "${name.trim()}".` });
 
-export async function createAgeGroup({ name }: { name: string }): Promise<void> {
-  await withConstraintMessages((await db()).execute("INSERT INTO age_groups (name) VALUES ($1)", [name.trim()]), duplicateGroup(name));
+export async function createAgeGroup({ federation, kind, name }: LibraryKey & { name: string }): Promise<void> {
+  await withConstraintMessages(
+    (await db()).execute("INSERT INTO age_groups (federation, kind, name) VALUES ($1, $2, $3)", [federation, kind, name.trim()]),
+    duplicateGroup(name),
+  );
 }
 
 export async function renameAgeGroup({ id, name }: { id: number; name: string }): Promise<void> {

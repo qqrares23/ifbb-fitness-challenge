@@ -57,7 +57,13 @@ function CompetitionDetail({ setup }: { setup: CompetitionSetup }) {
   const resultsQuery = useCompetitionResults(setup.competition, locked);
   // Setup is shown as soon as it loads; results only matter once the competition has started.
   if (locked && resultsQuery.status !== "success") return <QueryState query={resultsQuery}>{() => null}</QueryState>;
-  return <CompetitionView setup={setup} results={resultsQuery.data ? competitionResults(setup, resultsQuery.data) : null} />;
+  return (
+    <CompetitionView
+      setup={setup}
+      results={resultsQuery.data ? competitionResults(setup, resultsQuery.data) : null}
+      entryIdsWithResults={entriesWithResults(resultsQuery.data)}
+    />
+  );
 }
 
 function finishWarning(results: CompetitionResults): string {
@@ -69,9 +75,15 @@ function finishWarning(results: CompetitionResults): string {
     : `${missing} station result${plural ? "s are" : " is"} still empty and will count as 0. Results will be locked.`;
 }
 
-function CompetitionView({ setup, results }: { setup: CompetitionSetup; results: CompetitionResults | null }) {
+interface CompetitionViewProps {
+  setup: CompetitionSetup;
+  results: CompetitionResults | null;
+  entryIdsWithResults: ReadonlySet<number>;
+}
+
+function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionViewProps) {
   const navigate = useNavigate();
-  const { competition, stations, categories, entries } = setup;
+  const { competition, stationSets, categories, entries } = setup;
   const { setStatus, remove } = useCompetitionMutations();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
@@ -85,7 +97,7 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
     <>
       <CompetitionKindBadge kind={competition.kind} />
       <CompetitionStatusBadge status={competition.status} />
-      {!locked && (
+      {permissions.editDetails && (
         <AnimatedButton icon={SquarePenIcon} variant="outline" onClick={() => setEditing(true)}>
           Edit
         </AnimatedButton>
@@ -122,13 +134,18 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
         actions={actions}
       />
 
-      {!locked && <ReadinessCard readiness={readiness} />}
+      {/* Once started, the setup can still change, so problems (e.g. a set without exercises) are still shown. */}
+      {(!locked || (permissions.editSetup && readiness.blocking.length > 0)) && <ReadinessCard readiness={readiness} started={locked} />}
 
       {/* Keyed by status so the default tab follows the competition into live entry / results. */}
       <Tabs key={competition.status} defaultValue={locked ? "results" : speedFit ? "categories" : "stations"}>
         <TabsList className="mb-4">
           {locked && <TabsTrigger value="results">{competition.status === "finished" ? "Results" : speedFit ? "Timing" : "Scoring"}</TabsTrigger>}
-          {!speedFit && <TabsTrigger value="stations">Stations ({stations.length})</TabsTrigger>}
+          {!speedFit && (
+            <TabsTrigger value="stations">
+              Stations ({stationSets.length === 1 ? stationSets[0]!.stations.length : `${stationSets.length} sets`})
+            </TabsTrigger>
+          )}
           <TabsTrigger value="categories">Categories ({categories.length})</TabsTrigger>
           <TabsTrigger value="athletes">Athletes ({new Set(entries.map((e) => e.athleteId)).size})</TabsTrigger>
         </TabsList>
@@ -139,14 +156,14 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
         )}
         {!speedFit && (
           <TabsContent value="stations">
-            <StationsPanel setup={setup} locked={!permissions.editSetup} />
+            <StationsPanel setup={setup} locked={!permissions.editSetup} started={locked} />
           </TabsContent>
         )}
         <TabsContent value="categories">
-          <CategoriesPanel setup={setup} permissions={permissions} />
+          <CategoriesPanel setup={setup} permissions={permissions} entryIdsWithResults={entryIdsWithResults} />
         </TabsContent>
         <TabsContent value="athletes">
-          <EntriesPanel setup={setup} permissions={permissions} entryIdsWithResults={entriesWithResults(results)} />
+          <EntriesPanel setup={setup} permissions={permissions} entryIdsWithResults={entryIdsWithResults} />
         </TabsContent>
       </Tabs>
 
@@ -155,7 +172,7 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
         open={pending === "start"}
         onOpenChange={(open) => !open && setPending(null)}
         title="Start the competition?"
-        description={`${speedFit ? "Category rules" : "Stations and category rules"} will be locked and ${resultNoun} entry opens. Athletes missed out can still be entered late.`}
+        description={`${resultNoun[0]!.toUpperCase()}${resultNoun.slice(1)} entry opens. The competition details are locked; ${speedFit ? "categories" : "stations, station sets, categories"} and athletes can still be changed until it's finished.`}
         confirmLabel="Start"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "running" })}
       />
@@ -171,7 +188,7 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
         open={pending === "reopen"}
         onOpenChange={(open) => !open && setPending(null)}
         title="Reopen the competition?"
-        description={`Entry opens again so ${resultNoun}s can be corrected. The setup stays locked.`}
+        description={`Entry opens again so ${resultNoun}s can be corrected, and the setup can be changed again.`}
         confirmLabel="Reopen"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "running" })}
       />

@@ -2,7 +2,7 @@ import type { IsoDate } from "@/engine";
 import { db } from "./client";
 import { listCategories, type Category } from "./categories";
 import { listEntries, type Entry } from "./entries";
-import { listStations, type Station } from "./stations";
+import { listStationSets, type StationSet } from "./stations";
 
 export type CompetitionStatus = "draft" | "running" | "finished";
 
@@ -19,6 +19,8 @@ export interface Competition {
 }
 
 export interface CompetitionSummary extends Competition {
+  setCount: number;
+  /** Stations across all sets. */
   stationCount: number;
   categoryCount: number;
   entryCount: number;
@@ -32,7 +34,8 @@ export type NewCompetitionInput = CompetitionInput & Pick<Competition, "kind">;
 /** Everything the competition screens need, read in one go. */
 export interface CompetitionSetup {
   competition: Competition;
-  stations: Station[];
+  /** Fitness Challenge only; empty for Speed Fit. */
+  stationSets: StationSet[];
   categories: Category[];
   entries: Entry[];
 }
@@ -46,7 +49,8 @@ function values(input: CompetitionInput) {
 export async function listCompetitions(): Promise<CompetitionSummary[]> {
   return (await db()).select<CompetitionSummary[]>(
     `SELECT ${COLUMNS},
-       (SELECT COUNT(*) FROM competition_stations s WHERE s.competition_id = c.id) AS stationCount,
+       (SELECT COUNT(*) FROM station_sets t WHERE t.competition_id = c.id) AS setCount,
+       (SELECT COUNT(*) FROM competition_stations s JOIN station_sets t ON t.id = s.set_id WHERE t.competition_id = c.id) AS stationCount,
        (SELECT COUNT(*) FROM categories k WHERE k.competition_id = c.id) AS categoryCount,
        (SELECT COUNT(DISTINCT e.athlete_id) FROM entries e WHERE e.competition_id = c.id) AS entryCount
      FROM competitions c
@@ -55,14 +59,14 @@ export async function listCompetitions(): Promise<CompetitionSummary[]> {
 }
 
 export async function getCompetitionSetup(id: number): Promise<CompetitionSetup | null> {
-  const [rows, stations, categories, entries] = await Promise.all([
+  const [rows, stationSets, categories, entries] = await Promise.all([
     (await db()).select<Competition[]>(`SELECT ${COLUMNS} FROM competitions WHERE id = $1`, [id]),
-    listStations(id),
+    listStationSets(id),
     listCategories(id),
     listEntries(id),
   ]);
   const competition = rows[0];
-  return competition ? { competition, stations, categories, entries } : null;
+  return competition ? { competition, stationSets, categories, entries } : null;
 }
 
 /** Returns the new competition's id. */

@@ -5,6 +5,7 @@ import { BicepsFlexedIcon } from "@/components/icons/biceps-flexed";
 import { CalendarCheckIcon } from "@/components/icons/calendar-check";
 import { LayersIcon } from "@/components/icons/layers";
 import { UsersIcon } from "@/components/icons/users";
+import { DatabaseTransfer } from "@/features/data/DatabaseTransfer";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -28,7 +29,7 @@ export function AppLayout() {
     <div className="flex h-screen bg-background">
       <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
         <div className="flex flex-col items-center gap-2 border-b px-5 pt-6 pb-5">
-          <img src={ifbbLogo} alt="IFBB" className="h-20 w-auto select-none" draggable={false} />
+          <img src={ifbbLogo} alt="IFBB" className="h-24 w-auto select-none" draggable={false} />
           <div className="text-center">
             <p className="font-heading text-base leading-tight font-semibold">Fitness Challenge</p>
             <p className="text-xs text-muted-foreground">& Speed Fit</p>
@@ -39,7 +40,10 @@ export function AppLayout() {
             <NavItemLink key={item.to} {...item} />
           ))}
         </nav>
-        <p className="border-t px-5 py-3 text-[11px] text-muted-foreground">Data is stored on this computer only.</p>
+        <div className="grid gap-2 border-t px-3 py-3">
+          <DatabaseTransfer />
+          <p className="px-2 text-[11px] text-muted-foreground">Data is stored on this computer only. Export it to move it to another one.</p>
+        </div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div key={section} className="mx-auto max-w-6xl animate-in p-8 fade-in-0 slide-in-from-bottom-2 duration-300 ease-out">

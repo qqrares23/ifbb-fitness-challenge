@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateAthlete } from "./validateAthlete";
 
-const valid = { firstName: "Ana", lastName: "Pop", dateOfBirth: "2001-05-04", sex: "female", country: "ROU" } as const;
+const valid = { firstName: "Ana", lastName: "Pop", dateOfBirth: "2001-05-04", sex: "female", country: "ROU", club: "" } as const;
 
 describe("validateAthlete", () => {
   it("accepts a complete athlete", () => {

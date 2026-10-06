@@ -2,24 +2,24 @@ import type { ReactNode } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
-export interface CheckListItem {
-  id: number;
+export interface CheckListItem<K extends string | number = number> {
+  id: K;
   label: ReactNode;
   detail?: ReactNode;
   /** When set the item can't be ticked, and this explains why. */
   disabledReason?: string;
 }
 
-interface CheckListProps {
-  items: CheckListItem[];
-  selected: ReadonlySet<number>;
-  onToggle: (id: number, checked: boolean) => void;
+interface CheckListProps<K extends string | number> {
+  items: CheckListItem<K>[];
+  selected: ReadonlySet<K>;
+  onToggle: (id: K, checked: boolean) => void;
   /** Shown when `items` is empty. */
   empty: ReactNode;
 }
 
 /** A scrollable list of tickable rows, for "pick several of these" dialogs. */
-export function CheckList({ items, selected, onToggle, empty }: CheckListProps) {
+export function CheckList<K extends string | number>({ items, selected, onToggle, empty }: CheckListProps<K>) {
   return (
     <div className="max-h-[45vh] overflow-y-auto rounded-xl border">
       {items.length === 0 ? (
@@ -58,7 +58,7 @@ export function CheckList({ items, selected, onToggle, empty }: CheckListProps) 
 }
 
 /** Immutable add/remove for the selected-ids state of a CheckList. */
-export function toggleInSet(set: ReadonlySet<number>, id: number, checked: boolean): Set<number> {
+export function toggleInSet<K>(set: ReadonlySet<K>, id: K, checked: boolean): Set<K> {
   const next = new Set(set);
   if (checked) next.add(id);
   else next.delete(id);

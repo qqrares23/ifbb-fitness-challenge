@@ -2,7 +2,8 @@ import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
 import type { RecordedResults } from "@/db/results";
-import { formatDuration, rankByTime, rankCategory, type RankedRow, type TimedRow } from "@/engine";
+import type { StationSet } from "@/db/stations";
+import { rankByTime, rankCategory, type RankedRow, type TimedRow } from "@/engine";
 
 interface CategoryResultsBase {
   category: Category;
@@ -11,6 +12,8 @@ interface CategoryResultsBase {
 }
 
 export interface FitnessChallengeStandings extends CategoryResultsBase {
+  /** The station set the category is scored on; null until one is picked. */
+  stationSet: StationSet | null;
   rows: RankedRow<Entry>[];
 }
 
@@ -41,58 +44,25 @@ export function competitionResults(setup: CompetitionSetup, recorded: RecordedRe
       }),
     };
   }
-  const stationNumbers = setup.stations.map((s) => s.stationNumber);
   return {
     kind: "fitness_challenge",
     categories: setup.categories.map((category) => {
-      const rows = rankCategory(categoryEntries(setup, category), stationNumbers, recorded.scores);
+      // Only the category's current set counts; reps on other sets are kept but not ranked.
+      const stationSet = setup.stationSets.find((s) => s.id === category.stationSetId) ?? null;
+      const stationNumbers = stationSet?.stations.map((s) => s.stationNumber) ?? [];
+      const scores = recorded.scores.filter((s) => s.setId === stationSet?.id);
+      const rows = rankCategory(categoryEntries(setup, category), stationNumbers, scores);
       const missingResults = rows.reduce((sum, row) => sum + [...row.perStation.values()].filter((reps) => reps === null).length, 0);
-      return { category, rows, missingResults };
+      return { category, stationSet, rows, missingResults };
     }),
   };
 }
 
-/** Rows in bib order, for entry grids whose rows must not move while results are typed. */
-export function inBibOrder<T extends { entry: Entry }>(rows: readonly T[]): T[] {
-  return [...rows].sort((a, b) => a.entry.bibNumber - b.entry.bibNumber);
-}
-
-/** Entries that already have a result — they can't be moved to another category any more. */
-export function entriesWithResults(results: CompetitionResults | null): ReadonlySet<number> {
-  if (!results) return new Set();
-  const ids = results.kind === "speed_fit"
-    ? results.categories.flatMap((c) => c.rows.filter((r) => r.timeMs !== null).map((r) => r.entry.id))
-    : results.categories.flatMap((c) => c.rows.filter((r) => [...r.perStation.values()].some((reps) => reps !== null)).map((r) => r.entry.id));
-  return new Set(ids);
-}
-
-/** A challenge-neutral view of a ranked row, for leaderboards. */
-export interface LeaderboardRow {
-  entry: Entry;
-  place: number | null;
-  /** The ranking value as displayed: total reps, or the time. */
-  value: string;
-  /** Whether the athlete has any result yet (only ranked athletes can be shown as a winner). */
-  ranked: boolean;
-  /** Shown under the name, e.g. that results are incomplete. */
-  note?: string;
-}
-
-export function leaderboardRows(results: CompetitionResults, categoryIndex: number): LeaderboardRow[] {
-  if (results.kind === "speed_fit") {
-    return (results.categories[categoryIndex]?.rows ?? []).map((r) => ({
-      entry: r.entry,
-      place: r.place,
-      ranked: r.timeMs !== null,
-      value: r.timeMs === null ? "—" : formatDuration(r.timeMs),
-      note: r.timeMs === null ? "No time yet" : undefined,
-    }));
-  }
-  return (results.categories[categoryIndex]?.rows ?? []).map((r) => ({
-    entry: r.entry,
-    place: r.place,
-    ranked: [...r.perStation.values()].some((reps) => reps !== null),
-    value: String(r.totalReps),
-    note: r.complete ? undefined : "Results incomplete",
-  }));
+/**
+ * Entries with any recorded result, on any station set: they can't be moved to another category
+ * (the database refuses, see 0005), and removing them deletes results.
+ */
+export function entriesWithResults(recorded: RecordedResults | undefined): ReadonlySet<number> {
+  if (!recorded) return new Set();
+  return new Set(recorded.kind === "speed_fit" ? recorded.times.map((t) => t.entryId) : recorded.scores.map((s) => s.entryId));
 }

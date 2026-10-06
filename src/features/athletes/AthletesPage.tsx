@@ -27,15 +27,11 @@ export function AthletesPage() {
         { header: "Sex", cell: (a) => SEX_LABELS[a.sex] },
         { header: "Date of birth", cell: (a) => formatDate(a.dateOfBirth) },
         { header: "Age", cell: (a) => ageOn(a.dateOfBirth, today), className: "text-right tabular-nums" },
-        {
-          header: "Country",
-          cell: (a) => (
-<CountryLabel code={a.country} />
-          ),
-        },
+        { header: "Country", cell: (a) => <CountryLabel code={a.country} /> },
+        { header: "Club", cell: (a) => a.club || <span className="text-muted-foreground">—</span> },
       ]}
-      searchPlaceholder="Search name or country…"
-      searchFields={(a) => [a.firstName, a.lastName, a.country, countryName(a.country)]}
+      searchPlaceholder="Search name, country or club…"
+      searchFields={(a) => [a.firstName, a.lastName, a.country, countryName(a.country), a.club]}
       itemName={fullName}
       deleteNote="An athlete already entered in a competition can't be deleted."
       onDelete={(athlete) => remove.mutate(athlete)}

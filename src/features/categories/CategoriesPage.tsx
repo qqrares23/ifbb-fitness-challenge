@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Tags, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlusIcon } from "@/components/icons/plus";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
@@ -8,10 +9,12 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState } from "@/components/shared/QueryState";
 import { RowActions } from "@/components/shared/RowActions";
-import type { AgeGroup, AgeSubgroup, CategoryLevel } from "@/db/categoryLibrary";
-import { describeCategoryRules, subgroupName } from "@/lib/labels";
+import type { AgeGroup, AgeSubgroup, CategoryLevel, Federation } from "@/db/categoryLibrary";
+import type { CompetitionKind } from "@/db/competitions";
+import { COMPETITION_KIND_LABELS, describeCategoryRules, FEDERATION_LABELS, subgroupName } from "@/lib/labels";
 import { ROW_ENTER, staggerStyle } from "@/lib/motion";
-import { NameFormDialog } from "./NameFormDialog";
+import { NameFormDialog } from "@/components/shared/NameFormDialog";
+import { FederationPicker } from "./FederationPicker";
 import { SubgroupFormDialog } from "./SubgroupFormDialog";
 import { useCategoryLibrary, useCategoryLibraryMutations } from "./useCategoryLibrary";
 
@@ -29,7 +32,11 @@ interface PendingDelete {
 const KEEP_COPIES = "Competitions that already use it keep their copy.";
 
 export function CategoriesPage() {
-  const libraryQuery = useCategoryLibrary();
+  // One library per federation (IFBB, Romania) and challenge type (Fitness Challenge, Speed Fit).
+  const [federation, setFederation] = useState<Federation>("ifbb");
+  const [kind, setKind] = useState<CompetitionKind>("fitness_challenge");
+  const libraryQuery = useCategoryLibrary({ federation, kind });
+  const libraryName = `${FEDERATION_LABELS[federation]} ${COMPETITION_KIND_LABELS[kind]}`;
   const m = useCategoryLibraryMutations();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [deleting, setDeleting] = useState<PendingDelete | null>(null);
@@ -49,13 +56,25 @@ export function CategoriesPage() {
         actions={addGroupButton}
       />
 
+      <FederationPicker value={federation} onChange={setFederation} className="mb-4" />
+
+      <Tabs value={kind} onValueChange={(value) => setKind(value as CompetitionKind)} className="mb-4">
+        <TabsList>
+          {(Object.keys(COMPETITION_KIND_LABELS) as CompetitionKind[]).map((kind) => (
+            <TabsTrigger key={kind} value={kind} className="px-3">
+              {COMPETITION_KIND_LABELS[kind]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <QueryState query={libraryQuery}>
         {(groups) =>
           groups.length === 0 ? (
             <EmptyState
               icon={Tags}
-              title="No age groups yet"
-              description="Start with an age group such as Junior, Senior or Masters, then add its sub-groups and levels."
+              title={`No ${libraryName} age groups yet`}
+              description={kind === "speed_fit" ? "Start with an age group such as Open, Junior or Masters, then add its sub-groups by sex (and age, if needed). Levels are optional." : "Start with an age group such as Junior, Senior or Masters, then add its sub-groups and levels."}
               action={addGroupButton}
             />
           ) : (
@@ -96,7 +115,7 @@ export function CategoriesPage() {
                             </div>
                             <div className="flex flex-1 flex-wrap items-center gap-1.5">
                               {subgroup.levels.length === 0 && (
-                                <span className="text-xs text-amber-700">No levels yet, so it can't be added to a competition.</span>
+                                <span className="text-xs text-muted-foreground">No levels: added to competitions as one category.</span>
                               )}
                               {subgroup.levels.map((level) => (
                                 <LevelChip
@@ -142,7 +161,7 @@ export function CategoriesPage() {
       <NameFormDialog
         open={editing?.kind === "group"}
         onOpenChange={close}
-        title={editing?.kind === "group" && editing.group ? "Rename age group" : "Add age group"}
+        title={editing?.kind === "group" && editing.group ? "Rename age group" : `Add ${libraryName} age group`}
         label="Age group"
         placeholder="e.g. Junior, Senior, Masters"
         submitLabel={editing?.kind === "group" && editing.group ? "Save changes" : "Add age group"}
@@ -150,7 +169,7 @@ export function CategoriesPage() {
         saving={m.createGroup.isPending || m.renameGroup.isPending}
         onSave={(name) => {
           const group = editing?.kind === "group" ? editing.group : null;
-          return group ? m.renameGroup.mutateAsync({ id: group.id, name }) : m.createGroup.mutateAsync({ name });
+          return group ? m.renameGroup.mutateAsync({ id: group.id, name }) : m.createGroup.mutateAsync({ federation, kind, name });
         }}
       />
       {editing?.kind === "subgroup" && (

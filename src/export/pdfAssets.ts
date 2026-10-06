@@ -4,11 +4,9 @@ import type { jsPDF } from "jspdf";
 import notoSansBold from "@/assets/fonts/NotoSans-Bold.ttf?inline";
 import notoSansRegular from "@/assets/fonts/NotoSans-Regular.ttf?inline";
 import ifbbLogo from "@/assets/ifbb-logo.png?inline";
+import { IFBB_LOGO_ASPECT, type LogoChoice } from "./logos";
 
 export const PDF_FONT = "NotoSans";
-
-/** Intrinsic size of src/assets/ifbb-logo.png, for keeping its aspect ratio. */
-const LOGO_ASPECT = 395 / 251;
 
 const base64Of = (dataUrl: string) => dataUrl.slice(dataUrl.indexOf(",") + 1);
 
@@ -27,9 +25,17 @@ export function useUnicodeFont(doc: jsPDF): void {
   (doc as unknown as { __autoTableDocumentDefaults: unknown }).__autoTableDocumentDefaults = { styles: { font: PDF_FONT } };
 }
 
-/** Draws the IFBB logo with its top-left corner at (x, y), `height` mm tall. Returns its width. */
-export function drawLogo(doc: jsPDF, x: number, y: number, height: number): number {
-  const width = height * LOGO_ASPECT;
-  doc.addImage(ifbbLogo, "PNG", x, y, width, height);
+/**
+ * Draws a header logo `height` mm tall at y, its left edge at x (or its right edge, for
+ * align "right"), keeping its proportions; very wide logos are capped at `maxWidth`.
+ * Returns the width used (0 when there's no logo).
+ */
+export function drawLogo(doc: jsPDF, logo: LogoChoice, x: number, y: number, height: number, align: "left" | "right", maxWidth = 55): number {
+  if (logo.type === "none") return 0;
+  const { dataUrl, aspect } = logo.type === "ifbb" ? { dataUrl: ifbbLogo, aspect: IFBB_LOGO_ASPECT } : logo.image;
+  const width = Math.min(height * aspect, maxWidth);
+  const scaledHeight = width / aspect;
+  const left = align === "left" ? x : x - width;
+  doc.addImage(dataUrl, dataUrl.startsWith("data:image/jpeg") ? "JPEG" : "PNG", left, y + (height - scaledHeight) / 2, width, scaledHeight);
   return width;
 }

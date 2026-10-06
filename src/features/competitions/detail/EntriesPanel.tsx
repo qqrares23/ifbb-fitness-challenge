@@ -31,7 +31,7 @@ export function EntriesPanel({ setup, permissions, entryIdsWithResults }: Entrie
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Entry | null>(null);
   const { remove } = useEntryMutations();
-  const editable = permissions.editEntries;
+  const editable = permissions.editSetup;
   const started = competition.status !== "draft";
 
   if (categories.length === 0) {
@@ -47,12 +47,12 @@ export function EntriesPanel({ setup, permissions, entryIdsWithResults }: Entrie
   return (
     <div className="grid gap-6">
       {entries.length === 0 ? (
-        <EmptyState icon={Users} title="No athletes entered" description="Bib numbers are assigned automatically and can be changed." action={addButton} />
+        <EmptyState icon={Users} title="No athletes entered" description="Numbers (Nr) are given automatically or set by hand, and can be changed." action={addButton} />
       ) : (
         <>
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              {competition.status === "running" && "The competition is running: athletes can still be entered late, and bibs changed."}
+              {competition.status === "running" && "The competition is running: athletes can still be entered late, and numbers changed."}
               {competition.status === "finished" && "The competition is finished. Reopen it to add or remove athletes."}
             </p>
             {addButton}
@@ -103,7 +103,7 @@ interface CategoryEntriesProps {
 function CategoryEntries({ setup, category, entries, permissions, entryIdsWithResults, onRemove }: CategoryEntriesProps) {
   const { setCategory } = useEntryMutations();
   const date = setup.competition.date;
-  const editable = permissions.editEntries;
+  const editable = permissions.editSetup;
 
   return (
     <section>
@@ -120,7 +120,7 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-24 pl-4">Bib</TableHead>
+                <TableHead className="w-24 pl-4">Nr</TableHead>
                 <TableHead>Athlete</TableHead>
                 <TableHead className="text-right">Age</TableHead>
                 <TableHead>Country</TableHead>
@@ -147,6 +147,7 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
                     <TableCell className="text-right tabular-nums">{ageOn(entry.dateOfBirth, date)}</TableCell>
                     <TableCell>
                       <CountryLabel code={entry.country} />
+                      {entry.club && <span className="block text-xs text-muted-foreground">{entry.club}</span>}
                     </TableCell>
                     {editable && (
                       <TableCell title={movable ? undefined : "Has results already — the category can't change."}>
@@ -190,7 +191,7 @@ function BibInput({ entry }: { entry: Entry }) {
   const { setBib } = useEntryMutations();
   return (
     <CommitNumberInput
-      aria-label="Bib number"
+      aria-label="Nr"
       className="w-16 font-semibold"
       value={entry.bibNumber}
       min={1}

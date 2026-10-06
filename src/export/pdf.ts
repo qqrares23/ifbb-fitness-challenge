@@ -4,7 +4,8 @@ import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { CompetitionResults } from "@/features/competitions/standings";
 import { formatDate } from "@/lib/dates";
-import { categoryTitle, COMPETITION_KIND_LABELS, describeCategoryRules } from "@/lib/labels";
+import { categoryTitle, COMPETITION_KIND_LABELS } from "@/lib/labels";
+import type { PdfLogos } from "./logos";
 import { drawLogo, PDF_FONT, useUnicodeFont } from "./pdfAssets";
 import { resultsTables } from "./standingsTable";
 
@@ -19,16 +20,21 @@ const PODIUM_FILLS: [number, number, number][] = [
 
 /**
  * Official results: one page per category (a long one continues onto the next pages), each with
- * the IFBB header naming the category. Landscape, so many stations still fit.
+ * a header naming the category once ("Fitness Challenge — Junior Men 14–23 Gold Level Official
+ * Results") between the chosen logos. Landscape, so many stations still fit.
  */
-export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults): Uint8Array {
+export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults, logos: PdfLogos): Uint8Array {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   useUnicodeFont(doc);
   const pageHeight = doc.internal.pageSize.getHeight();
   const { competition } = setup;
 
+  const pageWidth = doc.internal.pageSize.getWidth();
+
   function drawHeader(category: Category) {
-    const textX = MARGIN + drawLogo(doc, MARGIN, 10, 22) + 6;
+    const leftWidth = drawLogo(doc, logos.left, MARGIN, 10, 22, "left");
+    drawLogo(doc, logos.right, pageWidth - MARGIN, 10, 22, "right");
+    const textX = MARGIN + (leftWidth > 0 ? leftWidth + 6 : 0);
     doc.setFont(PDF_FONT, "bold").setFontSize(18).setTextColor(...INK).text(competition.name, textX, 18);
     doc
       .setFont(PDF_FONT, "normal")
@@ -38,28 +44,26 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults)
       .text(`${COMPETITION_KIND_LABELS[competition.kind]} — ${categoryTitle(category)} Official Results`, textX, 30);
   }
 
-  const { head, categories } = resultsTables(setup, results, {
+  const tables = resultsTables(results, {
     stationHeader: (s) => `S${s.stationNumber}\n${s.exerciseName ?? ""}`,
     missing: "—",
   });
   const nameColumn = 1;
-  const placementColumn = head.length - 1;
 
-  for (const [index, { category, body }] of categories.entries()) {
+  for (const [index, { category, head, body }] of tables.entries()) {
+    // Columns differ per category: each uses its own station set.
+    const placementColumn = head.length - 1;
     if (index > 0) doc.addPage();
     drawHeader(category);
-    const y = 44;
-    doc.setFont(PDF_FONT, "bold").setFontSize(12).setTextColor(...INK).text(category.name, MARGIN, y);
-    const nameWidth = doc.getTextWidth(category.name);
-    doc.setFont(PDF_FONT, "normal").setFontSize(9).setTextColor(MUTED).text(describeCategoryRules(category), MARGIN + nameWidth + 4, y);
+    const y = 40;
 
     if (body.length === 0) {
-      doc.text("No athletes.", MARGIN, y + 6);
+      doc.setFont(PDF_FONT, "normal").setFontSize(10).setTextColor(MUTED).text("No athletes.", MARGIN, y + 4);
       continue;
     }
 
     autoTable(doc, {
-      startY: y + 3,
+      startY: y,
       head: [head],
       body,
       margin: { left: MARGIN, right: MARGIN },
@@ -71,6 +75,7 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults)
         0: { cellWidth: 16 },
         [nameColumn]: { cellWidth: 62 },
         2: { cellWidth: 20 },
+        [placementColumn - 1]: { cellWidth: results.kind === "speed_fit" ? 26 : 18, fontStyle: "bold" },
         [placementColumn]: { cellWidth: 22, fontStyle: "bold" },
       },
       didParseCell: ({ section, column, cell }) => {
@@ -89,7 +94,7 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults)
     doc.setPage(page);
     doc.setFont(PDF_FONT, "normal").setFontSize(8).setTextColor(MUTED);
     doc.text(generated, MARGIN, pageHeight - 8);
-    doc.text(`Page ${page} of ${pageCount}`, doc.internal.pageSize.getWidth() - MARGIN, pageHeight - 8, { align: "right" });
+    doc.text(`Page ${page} of ${pageCount}`, pageWidth - MARGIN, pageHeight - 8, { align: "right" });
   }
 
   return new Uint8Array(doc.output("arraybuffer"));

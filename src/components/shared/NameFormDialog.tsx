@@ -16,7 +16,7 @@ interface NameFormDialogProps {
   saving: boolean;
 }
 
-/** A one-field dialog, for naming an age group or a level. */
+/** A one-field dialog, for naming something (an age group, a level, a station set). */
 export function NameFormDialog({ title, open, onOpenChange, ...props }: NameFormDialogProps) {
   return (
     <FormDialog title={title} open={open} onOpenChange={onOpenChange} formKey={`${open}${props.initial}`}>

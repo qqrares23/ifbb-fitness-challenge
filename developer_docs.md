@@ -1,6 +1,6 @@
 # IFBB Fitness Challenge — Developer Documentation
 
-Version 0.3.0 · Tauri 2 · React 19 · TypeScript · SQLite
+Version 0.4 · Tauri 2 · React 19 · TypeScript · SQLite
 
 This document explains how the app is built and why, so that a new developer can change it safely.
 For a short user-facing overview see `README.md`.
@@ -11,12 +11,15 @@ For a short user-facing overview see `README.md`.
 
 A desktop app for running IFBB competitions **fully offline**. Organisers:
 
-1. maintain three libraries: **athletes**, **exercises** and **categories** (age group → sub-group by sex and age → levels);
+1. maintain three libraries: **athletes** (with an optional club), **exercises** (with an optional photo) and
+   **categories**: one library per federation (IFBB, Romania) and challenge type, each age group →
+   sub-group by sex and age → optional levels;
 2. create a **competition** of one of two challenge types:
-   - **Fitness Challenge**: athletes do reps at N stations, and the most total reps wins;
+   - **Fitness Challenge**: athletes do reps at the stations of their category's station set, and the most total reps wins;
    - **Speed Fit**: each athlete gets one time for the whole set of exercises, and the fastest wins;
-3. set it up (stations, categories, entries with bib numbers), **start** it, record results live,
-   **finish** it, and **export** official results as PDF or CSV.
+3. set it up (station sets, categories, entries with numbers), **start** it, record results live,
+   **finish** it, and **export** official results as PDF (with chosen logos) or CSV;
+4. **export / import the whole database** to move everything to another computer.
 
 All data lives in one SQLite file (`fitness-challenge.db`) in the OS app-data folder for the
 identifier `org.ifbb.fitnesschallenge`. There is no server, no network access and no user accounts.
@@ -127,19 +130,30 @@ src/
 
 ## 5. Native side (`src-tauri`)
 
-`lib.rs` is intentionally tiny. It contains no custom Tauri commands. It:
+`lib.rs` is small. It:
 
-- registers `tauri-plugin-sql` with the migration list for `sqlite:fitness-challenge.db`;
-- registers `tauri-plugin-dialog` (native Save-As) and `tauri-plugin-fs` (write the chosen file).
+- registers `tauri-plugin-sql` with the migration list for `sqlite:fitness-challenge.db` (the plugin
+  keeps the file in the app **config** dir, e.g. `%APPDATA%\org.ifbb.fitnesschallenge\`);
+- registers `tauri-plugin-dialog` (native Save-As / Open) and `tauri-plugin-fs` (write the chosen file);
+- defines four commands for moving the database (`src/db/backup.ts` calls them):
+  - `export_database(destination)`: copies the database file (the app runs
+    `PRAGMA wal_checkpoint(TRUNCATE)` first, so the copy is complete);
+  - `import_database(source)`: checks the SQLite file header, copies the current database to
+    `fitness-challenge.before-import.db`, removes stale `-wal`/`-shm` files and copies `source` in.
+    The app closes its connection first (`closeDb`) and reloads after, which runs any migrations an
+    older export still needs;
+  - `has_database_backup` / `restore_database_backup`: offered on the startup error screen
+    (`DatabaseGate`) when an imported database won't open.
 
 `DATABASE_URL` is duplicated in `src-tauri/src/lib.rs` and `src/db/client.ts`. **Both must match.**
 
 **Capabilities** (`capabilities/default.json`): `core:default`, `sql:default`, `sql:allow-execute`,
-`dialog:allow-save`, `fs:allow-write-file`. The file dialog grants write access only to the path the
-user picked.
+`dialog:allow-save`, `dialog:allow-open`, `fs:allow-write-file`, `core:window:allow-set-fullscreen`
+(the full-screen results table). The file dialog grants write access only to the path the user
+picked; the database commands are the app's own and need no fs scope.
 
 **CSP** (`tauri.conf.json`): `default-src 'self'`, with images/fonts also allowed from `data:` (the
-PDF embeds the logo and fonts as data URLs) and `connect-src` limited to Tauri IPC. Nothing is loaded
+PDF embeds logos and fonts, and exercise photos are stored, as data URLs) and `connect-src` limited to Tauri IPC. Nothing is loaded
 from the network.
 
 **Release profile**: LTO, `codegen-units = 1`, `opt-level = 3`, `panic = "abort"`, stripped.
@@ -155,33 +169,35 @@ athletes ───────────────┐ (ON DELETE RESTRICT)
                         │
 exercises ──┐ (RESTRICT)│
             │           │
-competitions ─┬─< competition_stations (competition_id, station_number) → exercise_id?
-   kind       ├─< categories (copied from category_presets)
+competitions ─┬─< station_sets ─< competition_stations (set_id, station_number) → exercise_id?
+   kind       ├─< categories (copied from the library; station_set_id → station_sets)
    status     └─< entries (athlete, category, bib, late_entry)
-                     ├─< scores (entry_id, station_number, reps)      [fitness_challenge]
-                     └─  speed_fit_times (entry_id PK, time_ms)        [speed_fit]
+                     ├─< scores (entry_id, set_id, station_number → station)   [fitness_challenge]
+                     └─  speed_fit_times (entry_id PK, time_ms)                 [speed_fit]
 
 age_groups ─< age_subgroups (sex, ages) ─< category_levels   (library; copied into categories)
 ```
 
 | Table | Key columns and constraints |
 |---|---|
-| `athletes` | `first_name`, `last_name` (non-blank), `date_of_birth` ISO date (`date(x) IS x`), `sex` ∈ male/female, `country` 3 upper-case letters |
-| `exercises` | `name` UNIQUE NOCASE, `description` |
-| `age_groups` | `name` UNIQUE NOCASE (Junior, Senior, Masters…) |
+| `athletes` | `first_name`, `last_name` (non-blank), `date_of_birth` ISO date (`date(x) IS x`), `sex` ∈ male/female, `country` 3 upper-case letters, `club` (optional, free text) |
+| `exercises` | `name` UNIQUE NOCASE, `photo` (image data URL, resized by the app; optional). `description` is no longer shown |
+| `age_groups` | `federation` ∈ ifbb/romania, `kind` ∈ fitness_challenge/speed_fit (one library per pair), `name` (Junior, Senior, Masters…), UNIQUE (`federation`, `kind`, `name`) NOCASE |
 | `age_subgroups` | `age_group_id` (CASCADE), `gender` ∈ male/female/mixed, `min_age`/`max_age` 0–120 or NULL, min ≤ max. Unique per age group + sex + ages (NULL = NULL) |
 | `category_levels` | `subgroup_id` (CASCADE), `name`, UNIQUE (`subgroup_id`, `name`) NOCASE |
 | `competitions` | `name`, `date`, `location`, `status` ∈ draft/running/finished, `kind` ∈ fitness_challenge/speed_fit, `started_at`, `finished_at` |
-| `competition_stations` | PK (`competition_id`, `station_number`), `exercise_id` nullable while in draft |
-| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules, `age_group`, `level` (both empty for pre-0006 categories). UNIQUE (`competition_id`, `name`) |
+| `station_sets` | `competition_id` (CASCADE), `name` ("Set A"…), UNIQUE per competition NOCASE. Fitness Challenge only; a new Fitness Challenge competition gets "Set A" (trigger) |
+| `competition_stations` | PK (`set_id`, `station_number`), `exercise_id` nullable until picked |
+| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules, `age_group`, `level` (both empty for pre-0006 categories), `station_set_id` (the set it is scored on; SET NULL if the set is deleted). UNIQUE (`competition_id`, `name`) |
 | `entries` | one row per athlete **per category** (an athlete can enter several levels): UNIQUE (`category_id`, `athlete_id`). One bib per athlete per competition, shared by all their entries and never used by another athlete (triggers). `late_entry` 0/1 |
-| `scores` | PK (`entry_id`, `station_number`), `reps` 0–9999 |
+| `scores` | PK (`entry_id`, `set_id`, `station_number`), `reps` 0–9999. FK (`set_id`, `station_number`) → station, CASCADE: removing a station deletes its reps. Inserts only on the set of the entry's category; reps on other sets are kept (they come back if the category switches back) |
 | `speed_fit_times` | PK `entry_id`, `time_ms` 1 … 86 399 999 |
 
 Conventions: dates are ISO `YYYY-MM-DD` text, timestamps are `datetime('now')` (UTC), booleans are
 0/1, and times are integer milliseconds at hundredth-of-a-second precision.
 
-Cascades: deleting a competition removes its stations, categories, entries and results. Deleting a
+Cascades: deleting a competition removes its station sets, stations, categories, entries and results.
+Deleting a station set (or a station) removes the reps recorded on it. Deleting a
 category removes its entries (and their results). Athletes and exercises in use **cannot** be
 deleted (FK RESTRICT, translated to a friendly message in `db/errors.ts`).
 
@@ -199,8 +215,11 @@ register it in `lib.rs` with the next `version`.
 | 4 | `0004_category_library.sql` | `category_presets`, seeded from existing categories |
 | 5 | `0005_late_entries.sql` | `entries.late_entry`; relaxes entry/category locks while running |
 | 6 | `0006_category_hierarchy.sql` | Library becomes age group → sub-group → level; each old preset becomes an age group with one sub-group (no levels); `categories.age_group`/`level` |
-| 8 | `0008_unique_subgroups.sql` | Merges duplicate sub-groups, then a unique index prevents new ones |
 | 7 | `0007_multiple_levels.sql` | Rebuilds `entries` (+ `scores`, `speed_fit_times`, all their triggers) so an athlete can enter several categories; bib triggers |
+| 8 | `0008_unique_subgroups.sql` | Merges duplicate sub-groups, then a unique index prevents new ones |
+| 9 | `0009_category_libraries.sql` | Rebuilds the library tables with `age_groups.federation` and `kind`; existing library → IFBB Fitness Challenge, the others start empty |
+| 10 | `0010_station_sets.sql` | Station sets (stations and scores rebuilt per set, existing → "Set A"); stations, sets and categories editable until finished |
+| 11 | `0011_clubs_and_photos.sql` | `athletes.club`, `exercises.photo` |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
 
@@ -216,10 +235,9 @@ Any other transition raises `That competition status change is not allowed.` `ki
 | Action | draft | running | finished |
 |---|:-:|:-:|:-:|
 | Edit name / date / location | ✅ | ❌ | ❌ |
-| Stations: count and exercises | ✅ | ❌ | ❌ |
-| Add category | ✅ | ✅ (for late athletes) | ❌ |
-| Edit category rules | ✅ | ❌ | ❌ |
-| Remove category | ✅ | only if empty | ❌ |
+| Station sets: add, rename, delete; stations: count and exercises (an exercise change keeps reps) | ✅ | ✅ | ❌ |
+| Add category, edit its rules, switch its station set | ✅ | ✅ | ❌ |
+| Remove category (with its entries and results) | ✅ | ✅ | ❌ |
 | Add / remove entry, change bib | ✅ | ✅ (new entries get `late_entry = 1`) | ❌ |
 | Change entry category | ✅ | only while the entry has no results | ❌ |
 | Enter / clear reps or times | ❌ | ✅ | ❌ |
@@ -288,12 +306,16 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
     the athlete's entries in one statement.
   - **Results upsert** (`setScore`, `setTime`): `INSERT … ON CONFLICT DO UPDATE`. A `null` value deletes
     the row (clears the result).
-  - **Station count** (`setStationCount`): an idempotent recursive-CTE `INSERT OR IGNORE`, then
-    `DELETE … > count`. Re-running after a partial failure converges.
+  - **Station sets** (`db/stations.ts`): `listStationSets` returns each set with its stations.
+    `createStationSet` names it "Set A/B/…" and gives it to categories without a set.
+    `setStationCount({ setId, count })` is an idempotent recursive-CTE `INSERT OR IGNORE`, then
+    `DELETE … > count` (reps on removed stations cascade away).
+  - **Category edits** (`db/categories.ts`): `setCategoryStationSet`, and `updateCategoryRules`, which
+    renames a library category to match its new ages.
   - **Category snapshot** (`addCategoriesFromLibrary(levelIds)`): reads the levels with their sub-group
     and age group (`json_each`), composes names with `categoryName()` and inserts them in **one**
-    multi-row `INSERT`, so it is all-or-nothing. Later library edits
-    never change a competition's rules.
+    multi-row `INSERT`, so it is all-or-nothing, scored on the competition's first station set.
+    Later library edits never change a competition's rules.
   - **Status change** (`setCompetitionStatus`): stamps `started_at` (first start only) and `finished_at`.
 - `results.ts` returns a discriminated union `RecordedResults` (`scores` or `times`, depending on `kind`).
 - Inputs are validated on the JS side too (e.g. `MAX_REPS`, `MAX_STATIONS = 50`, `MAX_TIME_MS`), with
@@ -304,9 +326,9 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
 `db/queryKeys.ts` defines a small hierarchy of query keys:
 
 ```
-["athletes"]  ["exercises"]  ["categoryLibrary"]
+["athletes"]  ["exercises"]  ["categoryLibrary", kind]
 ["competitions"]                    list with counts
-["competitions", id]                CompetitionSetup (competition + stations + categories + entries)
+["competitions", id]                CompetitionSetup (competition + stationSets + categories + entries)
 ["competitions", id, "results"]     RecordedResults
 ```
 
@@ -344,27 +366,35 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 
 ### 7.6 Competition logic (`src/features/competitions/`)
 
-- **`permissions.ts`**: `competitionPermissions(status)` → `{ editSetup, editEntries, addCategories,
-  enterResults }`, plus `canRemoveCategory` and `canChangeCategory`. These mirror the triggers in
-  §6.3.
+- **`permissions.ts`**: `competitionPermissions(status)` → `{ editDetails, editSetup, enterResults }`
+  (details: draft only; setup = station sets, stations, categories, athletes: until finished;
+  results: running), plus `canChangeCategory`. These mirror the triggers in §6.3.
 - **`readiness.ts`**: `competitionReadiness(setup)` → `{ blocking, warnings }`, shown in
-  `ReadinessCard`. **Start** is disabled while `blocking` is non-empty.
-  - Blocking: no stations (Fitness Challenge only), a station without an exercise, no entries, an
-    entry that no longer meets its category's rules.
-  - Warnings: the same exercise at several stations, a category with no athletes.
+  `ReadinessCard`. **Start** is disabled while `blocking` is non-empty; once started, the card is
+  still shown ("Needs attention") while blocking problems exist, since the setup can still change.
+  - Blocking (Fitness Challenge): no station set, a set without stations, a station without an
+    exercise, a category without a set. Always: no entries, an entry that no longer meets its
+    category's rules.
+  - Warnings: the same exercise twice in a set, a set no category uses, a category with no athletes.
 - **`standings.ts`**: the single ranking entry point.
-  - `competitionResults(setup, recorded)` → per-category standings, plus `missingResults`.
-  - `entriesWithResults(results)` → entry IDs that already have a result (these entries can't change
+  - `competitionResults(setup, recorded)` → per-category standings (each Fitness Challenge category
+    with its `stationSet`, ranked only on that set's stations and reps), plus `missingResults`.
+  - `entriesWithResults(recorded)` → entry IDs with a result on any set (these entries can't change
     category, and removing one deletes its results).
-  - `leaderboardRows(results, i)` → a challenge-neutral `{ entry, place, value, ranked, note }` for the
-    Leaderboard and WinnerBanner.
 
 ### 7.7 Screens
 
-**Categories page** is a custom tree: age-group cards → sub-group rows (sex + ages, edited in
-`SubgroupFormDialog`) → level chips (named in `NameFormDialog`). A sub-group without levels can't
-be added to a competition. Naming helpers live in `lib/labels.ts` (`subgroupName`, `categoryName`,
+**Categories page** has an IFBB / Romania switch (`FederationPicker`) and Fitness Challenge / Speed Fit
+tabs: one library per pair. `AddCategoriesDialog` has the same federation switch and only offers the
+competition's own challenge type. The page shows a tree: age-group cards → sub-group rows (sex +
+ages, edited in `SubgroupFormDialog`) → level chips (named in `NameFormDialog`). Levels are optional:
+a sub-group without levels is added to a competition as one category (typical for Speed Fit, often
+sex-only with open ages); it has `age_group` set and `level` empty. Naming helpers live in `lib/labels.ts` (`subgroupName`, `categoryName`,
 `categoryTitle`).
+
+**Athletes** have an optional club (free text; the form suggests clubs already used through a
+native `<datalist>`). **Exercises** have an optional photo (`lib/images.loadPhoto` scales it to
+900 px JPEG); `ExercisePhotoButton` / `PhotoHint` open it large, also from the scoring table.
 
 **Library pages** (Athletes, Exercises) are built on the generic
 `components/shared/LibraryPage<T>`: a searchable table, an add/edit dialog via `renderForm`, and a
@@ -376,26 +406,36 @@ delete confirmation. A new library screen is just a column config plus a form di
 CompetitionDetailPage   load setup (["competitions", id])
  └ CompetitionDetail    if started, also load results; wait for them
     └ CompetitionView   header actions (Edit / Delete / Start / Finish / Reopen / Export)
-       ├ ReadinessCard           (draft only)
+       ├ ReadinessCard           (draft; later only while there are problems)
        └ Tabs (keyed by status, so the default tab follows the lifecycle)
           ├ Results/Scoring/Timing → ResultsPanel   (running/finished)
-          ├ Stations               → StationsPanel  (Fitness Challenge only)
-          ├ Categories             → CategoriesPanel → AddCategoriesDialog
+          ├ Stations               → StationsPanel  (Fitness Challenge only; one card per set)
+          ├ Categories             → CategoriesPanel → AddCategoriesDialog, CategoryRulesDialog
           └ Athletes               → EntriesPanel    → AddEntriesDialog
 ```
 
+- **StationsPanel / CategoriesPanel**: editable until the competition is finished. Each set card has
+  rename, delete, station count (shrinking after the start asks first: reps are deleted) and
+  exercises. Each category row has a station set picker (Fitness Challenge), edit rules
+  (`CategoryRulesDialog`, sharing `AgeRulesFields` with the library's sub-group form) and remove.
 - **AddEntriesDialog**: pick a category, then tick athletes. Already-entered athletes are hidden,
   ineligible ones are disabled with the reason shown, and a **New athlete** button opens the athlete
   form. The athlete form is rendered *outside* the `<form>`, because React would otherwise bubble the
   nested dialog's submit event through the portal into the parent form. While the competition is
-  running, the dialog is labelled as a late entry.
+  running, the dialog is labelled as a late entry. **Nr** (the bib number, shown as "Nr" everywhere)
+  is Automatic or Set manually per athlete; an athlete already in another category keeps theirs.
+  `addEntries` does it in one statement: existing number, else the typed one, else
+  `MAX(highest in use, highest typed) + ROW_NUMBER()`.
 - **ResultsPanel**: sub-group tabs (`groupBySubgroup` in `standings.ts`), then level tabs (with "N
   missing" or a check), **Previous/Next** buttons (Next turns primary once the current category has
-  all results), a progress line, and an **Enter athlete** shortcut for late entries. Below that:
-  - `WinnerBanner`: current leader(s), re-animated when the lead changes;
-  - `RepsGrid` (athletes × stations) or `TimesTable`: kept in **bib order** so rows don't jump while
-    a judge types;
-  - `Leaderboard`: in rank order, animated with `useFlipAnimation` as places change.
+  all results), a progress line, and an **Enter athlete** shortcut for late entries. Below that, the
+  entry table **is** the standings (there is no separate leaderboard or winner banner):
+  - `RepsGrid` (Place | Nr | Athlete | stations of the category's set | Total) or `TimesTable`
+    (Place | Nr | Athlete | Time), in **ranking order**: rows glide to their new place
+    (`useFlipAnimation`) as results are saved; the leader / winner row has a trophy and gold tint
+    (`AthleteCell`). Athletes without results are unplaced. Station headers have a photo button.
+  - `ExpandableTable`: double-click toggles a full-screen overlay (and the window's full screen)
+    with the same mounted table, so results can be entered there; Escape outside a field exits.
 - **Finish confirmation**: warns how many station results are empty (counted as 0) or how many
   athletes have no time (listed without a place).
 
@@ -412,6 +452,8 @@ CompetitionDetailPage   load setup (["competitions", id])
 | `useFlipAnimation` | FLIP reorder animation using `transform` only. Respects reduced motion. |
 | `useFormState` | Dialog form state: `values`, typed `set(key, value)`, `submitted`, `onSubmit(save)`. |
 | `CountryLabel` | Country name + small ISO code. |
+| `NameFormDialog` | One-field naming dialog (age groups, levels, station sets). |
+| `lib/images` | `loadPhoto` (resized JPEG for exercise photos), `loadLogo` (PNG up to 1000 px + aspect, for PDF logos). |
 | `fullName` / `listName` (`lib/labels`) | "Ana Pop" for sentences, banners and exports; "Pop Ana" for tables and pick lists. |
 | `subgroupName` / `categoryName` / `categoryTitle` | Category naming; `subgroupName` skips sex/ages the age group name already states. |
 
@@ -427,15 +469,19 @@ transform, and the OS "reduce motion" setting disables it globally (CSS media qu
 startup bundle. Export is offered only once the competition is **finished**.
 
 ```
-exportResults(format, setup, results)
-  ├ standingsTable.resultsTables()   one shared column layout:
-  │     Fitness Challenge: Nr Crt | Athlete Name | Country | S1…Sn | Placement
-  │     Speed Fit:         Nr Crt | Athlete Name | Country | Time  | Placement
-  ├ pdf.resultsPdf()     A4 landscape, one page per category, each with the IFBB header
-  │                      "<kind> — <categoryTitle> Official Results" and an autoTable,
+exportResults(format, setup, results, logos)
+  ├ standingsTable.resultsTables()   one table per category (its own header), ranking order:
+  │     Fitness Challenge: Nr Crt | Athlete Name | Country | [Club] | <stations of its set> | Total | Placement
+  │     Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
+  │     (Club only when someone in the category has one)
+  ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a header between the left
+  │                      and right logos (PdfLogoDialog: IFBB, another image or none on each side;
+  │                      remembered in localStorage) naming the category once:
+  │                      "<kind> — <categoryTitle> Official Results", then an autoTable,
   │                      podium cell colours, "Generated …" and "Page x of y" footer.
   │                      Embeds Noto Sans (pdfAssets) so names like "Łukasz" or "Şahin" render.
-  ├ csv.resultsCsv()     one flat sheet with a Category column, UTF-8 BOM, CRLF, RFC-4180 quoting,
+  ├ csv.resultsCsv()     one sheet with a Category column; the header row is repeated (after a
+  │                      blank line) where the station columns change. UTF-8 BOM, CRLF, RFC-4180 quoting,
   │                      and formula-injection guarding (cells starting with = + @ tab CR, or "-"
   │                      followed by a non-digit, get a leading ').
   └ saveFile()           native Save-As dialog → plugin-fs writeFile. Returns false if cancelled.
@@ -533,7 +579,7 @@ and a page built on `LibraryPage`. Then add a route in `router.tsx` and a `NAV_I
    kind-isolation and lifecycle triggers.
 2. Add a ranking function in `engine/`.
 3. Extend the unions in `RecordedResults` (`db/results.ts`) and `CompetitionResults` (`standings.ts`).
-4. Handle the new kind in `leaderboardRows`, `resultsTables`, `readiness`, `ResultsPanel` and
+4. Handle the new kind in `resultsTables`, `readiness`, `ResultsPanel` and
    `COMPETITION_KIND_LABELS`.
 
 TypeScript's discriminated unions will flag most of the places you miss.
@@ -546,6 +592,11 @@ call `saveFile()` from `exportResults.ts`.
 ---
 
 ## 11. Known limitations and gotchas
+
+- **Importing a database from a newer app version** fails to open (its migrations are unknown here);
+  the startup screen then offers to restore the database from before the import.
+- **Category names are rebuilt on read** (`listCategories`) from age group, sex, ages and level, so
+  naming fixes apply to old categories; the stored `name` is only used for uniqueness.
 
 - **`DATABASE_URL` and the reps/time/age limits are written in two languages.** They can't share
   one definition; `src/consistency.test.ts` fails if they drift.

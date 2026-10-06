@@ -35,6 +35,14 @@ describe("category naming", () => {
     expect(subgroupName("Cup 116–20", juniors)).toBe("Cup 116–20 Men 16–20");
   });
 
+  it("names a sub-group without levels after the sub-group alone, and never repeats the level", () => {
+    const openMen = { gender: "male", minAge: null, maxAge: null } as const;
+    expect(categoryName("Open", openMen, "")).toBe("Open Men");
+    expect(categoryName("Junior Gold", juniorMen, "Gold")).toBe("Junior Gold Men 14–23");
+    expect(categoryTitle({ ...openMen, name: "x", ageGroup: "Open", level: "" })).toBe("Open Men");
+    expect(categoryTitle({ ...juniorMen, name: "x", ageGroup: "Juniors Men 14-23 Gold", level: "Gold" })).toBe("Juniors Men 14-23 Gold");
+  });
+
   it("titles it for official results, without doubling the word Level", () => {
     const base = { ...juniorMen, name: "x", ageGroup: "Junior" };
     expect(categoryTitle({ ...base, level: "Gold" })).toBe("Junior Men 14–23 Gold Level");

@@ -8,10 +8,10 @@ import type { Sex } from "@/engine";
 import { useFormState } from "@/hooks/useFormState";
 import { todayIso } from "@/lib/dates";
 import { SEX_LABELS } from "@/lib/labels";
-import { useAthleteMutations } from "./useAthletes";
+import { useAthleteMutations, useAthletes } from "./useAthletes";
 import { validateAthlete } from "./validateAthlete";
 
-const EMPTY: AthleteInput = { firstName: "", lastName: "", dateOfBirth: "", sex: "male", country: "" };
+const EMPTY: AthleteInput = { firstName: "", lastName: "", dateOfBirth: "", sex: "male", country: "", club: "" };
 
 interface AthleteFormDialogProps {
   /** null = create a new athlete. */
@@ -33,6 +33,8 @@ function AthleteForm({ athlete, onDone }: { athlete: Athlete | null; onDone: () 
   const { values, set, submitted, onSubmit } = useFormState<AthleteInput>(athlete ?? EMPTY);
   const today = todayIso();
   const errors = submitted ? validateAthlete(values, today) : {};
+  // Clubs already used, offered as suggestions (free text, so a new club is just typed).
+  const clubs = [...new Set((useAthletes().data ?? []).map((a) => a.club).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   const handleSubmit = onSubmit(() => {
     if (Object.keys(validateAthlete(values, today)).length > 0) return;
@@ -71,6 +73,14 @@ function AthleteForm({ athlete, onDone }: { athlete: Athlete | null; onDone: () 
       </div>
       <FormField id="athlete-country" label="Country" error={errors.country}>
         <CountryCombobox id="athlete-country" value={values.country} onChange={(code) => set("country", code)} />
+      </FormField>
+      <FormField id="athlete-club" label="Club (optional)">
+        <Input id="athlete-club" list="athlete-clubs" value={values.club} onChange={(e) => set("club", e.target.value)} placeholder="Type or pick a club" />
+        <datalist id="athlete-clubs">
+          {clubs.map((club) => (
+            <option key={club} value={club} />
+          ))}
+        </datalist>
       </FormField>
       <FormActions onCancel={onDone} submitLabel={athlete ? "Save changes" : "Add athlete"} saving={create.isPending || update.isPending} />
     </form>

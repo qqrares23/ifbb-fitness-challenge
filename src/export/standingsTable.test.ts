@@ -2,54 +2,85 @@ import { describe, expect, it } from "vitest";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
 import { competitionResults } from "@/features/competitions/standings";
-import { toCsv } from "./csv";
+import { resultsCsv, toCsv } from "./csv";
 import { exportFileStem, resultsTables } from "./standingsTable";
 
 const entry = (id: number, firstName: string): Entry => ({
-  id, athleteId: id, categoryId: 1, bibNumber: id, firstName, lastName: "Pop", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", lateEntry: false,
+  id, athleteId: id, categoryId: 1, bibNumber: id, firstName, lastName: "Pop", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", club: "", lateEntry: false,
 });
 
 const setup: CompetitionSetup = {
   competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "finished" },
-  stations: [
-    { stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" },
-    { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
+  stationSets: [
+    { id: 1, name: "Set A", stations: [{ stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" }, { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" }] },
+    { id: 2, name: "Set B", stations: [{ stationNumber: 1, exerciseId: 3, exerciseName: "Sit-ups" }] },
   ],
-  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "" }],
+  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", stationSetId: 1 }],
   entries: [entry(1, "Ana"), entry(2, "Ion"), entry(3, "Eva")],
 };
 
 const format = { stationHeader: (s: { stationNumber: number }) => `S${s.stationNumber}`, missing: "—" };
 
 describe("resultsTables", () => {
-  it("Fitness Challenge: Nr Crt | Athlete Name | Country | stations | Placement, in ranking order", () => {
+  it("Fitness Challenge: Nr Crt | Athlete Name | Country | stations | Total | Placement, in ranking order", () => {
     const results = competitionResults(setup, {
       kind: "fitness_challenge",
       scores: [
-        { entryId: 1, stationNumber: 1, reps: 20 },
-        { entryId: 1, stationNumber: 2, reps: 10 },
-        { entryId: 2, stationNumber: 1, reps: 30 },
+        { entryId: 1, setId: 1, stationNumber: 1, reps: 20 },
+        { entryId: 1, setId: 1, stationNumber: 2, reps: 10 },
+        { entryId: 2, setId: 1, stationNumber: 1, reps: 30 },
+        { entryId: 3, setId: 2, stationNumber: 1, reps: 99 }, // another set: kept, not ranked
       ],
     });
-    const { head, categories } = resultsTables(setup, results, format);
-    expect(head).toEqual(["Nr Crt", "Athlete Name", "Country", "S1", "S2", "Placement"]);
-    expect(categories[0]!.body).toEqual([
-      ["1", "Ana Pop", "ROU", "20", "10", "1"],
-      ["2", "Ion Pop", "ROU", "30", "—", "1"],
-      ["3", "Eva Pop", "ROU", "—", "—", "3"],
+    const [open] = resultsTables(results, format);
+    expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "S1", "S2", "Total", "Placement"]);
+    expect(open!.body).toEqual([
+      ["1", "Ana Pop", "ROU", "20", "10", "30", "1"],
+      ["2", "Ion Pop", "ROU", "30", "—", "30", "1"],
+      ["3", "Eva Pop", "ROU", "—", "—", "0", "3"],
     ]);
   });
 
   it("Speed Fit: Nr Crt | Athlete Name | Country | Time | Placement, fastest first, no time last", () => {
-    const speedFit = { ...setup, competition: { ...setup.competition, kind: "speed_fit" as const }, stations: [] };
+    const speedFit = { ...setup, competition: { ...setup.competition, kind: "speed_fit" as const }, stationSets: [] };
     const results = competitionResults(speedFit, { kind: "speed_fit", times: [{ entryId: 2, timeMs: 83_450 }, { entryId: 3, timeMs: 61_000 }] });
-    const { head, categories } = resultsTables(speedFit, results, format);
-    expect(head).toEqual(["Nr Crt", "Athlete Name", "Country", "Time", "Placement"]);
-    expect(categories[0]!.body).toEqual([
+    const [open] = resultsTables(results, format);
+    expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Time", "Placement"]);
+    expect(open!.body).toEqual([
       ["1", "Eva Pop", "ROU", "1:01.00", "1"],
       ["2", "Ion Pop", "ROU", "1:23.45", "2"],
       ["3", "Ana Pop", "ROU", "—", "—"],
     ]);
+  });
+});
+
+describe("station sets in exports", () => {
+  it("gives each category the columns of its own set, and repeats the CSV header only where they change", () => {
+    const twoSets: CompetitionSetup = {
+      ...setup,
+      categories: [
+        { ...setup.categories[0]!, id: 1, name: "Gold", stationSetId: 1 },
+        { ...setup.categories[0]!, id: 2, name: "Silver", stationSetId: 1 },
+        { ...setup.categories[0]!, id: 3, name: "Bronze", stationSetId: 2 },
+      ],
+      entries: [entry(1, "Ana"), { ...entry(2, "Ion"), categoryId: 2 }, { ...entry(3, "Eva"), categoryId: 3 }],
+    };
+    const results = competitionResults(twoSets, { kind: "fitness_challenge", scores: [{ entryId: 3, setId: 2, stationNumber: 1, reps: 7 }] });
+    expect(resultsTables(results, format).map((t) => t.head.slice(3, -2))).toEqual([["S1", "S2"], ["S1", "S2"], ["S1"]]);
+    const lines = resultsCsv(results).replace("﻿", "").split("\r\n");
+    expect(lines.filter((l) => l.startsWith("Category,"))).toHaveLength(2);
+    expect(lines).toContain("Bronze,1,Eva Pop,ROU,7,7,1");
+  });
+});
+
+describe("club column", () => {
+  it("appears only for categories where an athlete has a club", () => {
+    const speedFit = { ...setup, competition: { ...setup.competition, kind: "speed_fit" as const }, stationSets: [] };
+    const withClub = { ...speedFit, entries: [{ ...entry(1, "Ana"), club: "CS Dinamo" }, entry(2, "Ion")] };
+    const [open] = resultsTables(competitionResults(withClub, { kind: "speed_fit", times: [] }), format);
+    expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Club", "Time", "Placement"]);
+    expect(open!.body[0]).toEqual(["1", "Ana Pop", "ROU", "CS Dinamo", "—", "—"]);
+    expect(resultsTables(competitionResults(speedFit, { kind: "speed_fit", times: [] }), format)[0]!.head).not.toContain("Club");
   });
 });
 

@@ -9,11 +9,10 @@ import type { CompetitionSetup } from "@/db/competitions";
 import { describeCategoryRules } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { AddEntriesDialog } from "../detail/AddEntriesDialog";
-import { leaderboardRows, type CompetitionResults } from "../standings";
-import { Leaderboard } from "./Leaderboard";
+import type { CompetitionResults } from "../standings";
+import { ExpandableTable } from "./ExpandableTable";
 import { RepsGrid } from "./RepsGrid";
 import { TimesTable } from "./TimesTable";
-import { WinnerBanner } from "./WinnerBanner";
 
 interface ResultsPanelProps {
   setup: CompetitionSetup;
@@ -22,19 +21,24 @@ interface ResultsPanelProps {
   editable: boolean;
 }
 
-/** Live entry + standings for either challenge type, one category at a time. */
+/** Live result entry for either challenge type, one category at a time; the table itself is the standings. */
 export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [enteringLate, setEnteringLate] = useState(false);
   // A challenge-neutral summary of each category, so one tab bar serves both challenge types.
-  const categories = results.categories.map(({ category, missingResults, rows }) => ({ category, missingResults, athletes: rows.length }));
+  const categories = results.categories.map((c) => ({
+    category: c.category,
+    missingResults: c.missingResults,
+    athletes: c.rows.length,
+    // Speed Fit: one time per athlete. Fitness Challenge: one result per station of the category's set.
+    resultsPerAthlete: "stationSet" in c ? (c.stationSet?.stations.length ?? 0) : 1,
+  }));
   const index = Math.max(0, categories.findIndex((c) => c.category.id === categoryId));
   const current = categories[index];
   if (!current) return null;
 
   const speedFit = results.kind === "speed_fit";
-  const expected = current.athletes * (speedFit ? 1 : setup.stations.length);
-  const rows = leaderboardRows(results, index);
+  const expected = current.athletes * current.resultsPerAthlete;
 
   // Sub-group → level navigation, so officials can move on as soon as a category is done.
   const subgroups = groupBySubgroup(categories.map((c) => c.category));
@@ -66,7 +70,7 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
       </Tabs>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {current.category.level ? (
+        {currentSubgroup.categoryIndexes.length > 1 || current.category.level ? (
           <Tabs value={String(current.category.id)} onValueChange={(value) => setCategoryId(Number(value))}>
             <TabsList className="h-auto flex-wrap">
               {currentSubgroup.categoryIndexes.map((i) => {
@@ -74,7 +78,7 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
                 return (
                   <TabsTrigger key={category.id} value={String(category.id)} className="flex-none px-3">
                     {isDone(i) && <CircleCheck className="text-emerald-600" />}
-                    {category.level}
+                    {category.level || "No level"}
                     {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
                   </TabsTrigger>
                 );
@@ -119,16 +123,14 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
         <p className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">No athletes in this category.</p>
       ) : (
         // Keyed by category so switching tabs plays the entrance animation.
-        <div key={current.category.id} className="grid animate-in gap-4 fade-in-0 slide-in-from-bottom-2 duration-300">
-          <WinnerBanner rows={rows} finished={setup.competition.status === "finished"} />
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div key={current.category.id} className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+          <ExpandableTable title={current.category.name}>
             {results.kind === "speed_fit" ? (
               <TimesTable competitionId={setup.competition.id} standings={results.categories[index]!} editable={editable} />
             ) : (
-              <RepsGrid competitionId={setup.competition.id} stations={setup.stations} standings={results.categories[index]!} editable={editable} />
+              <RepsGrid competitionId={setup.competition.id} standings={results.categories[index]!} editable={editable} />
             )}
-            <Leaderboard rows={rows} valueLabel={speedFit ? "Time" : "Total reps"} />
-          </div>
+          </ExpandableTable>
         </div>
       )}
 

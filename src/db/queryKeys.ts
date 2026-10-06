@@ -5,6 +5,7 @@ export const queryKeys = {
   athletes: ["athletes"],
   exercises: ["exercises"],
   categoryLibrary: ["categoryLibrary"],
+  categoryLibraryOf: (federation: string, kind: string) => ["categoryLibrary", federation, kind],
   competitions: ["competitions"],
   competition: (id: number) => ["competitions", id],
   // Nested under the competition so anything that refreshes a competition refreshes its results

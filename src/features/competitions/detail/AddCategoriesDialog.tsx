@@ -3,8 +3,10 @@ import { Link } from "react-router";
 import { CheckList, toggleInSet } from "@/components/shared/CheckList";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import type { CompetitionSetup } from "@/db/competitions";
+import type { Federation } from "@/db/categoryLibrary";
+import { FederationPicker } from "@/features/categories/FederationPicker";
 import { useCategoryLibrary } from "@/features/categories/useCategoryLibrary";
-import { categoryName, describeCategoryRules } from "@/lib/labels";
+import { categoryName, COMPETITION_KIND_LABELS, describeCategoryRules, FEDERATION_LABELS } from "@/lib/labels";
 import { useCategoryMutations } from "../useCompetitions";
 
 interface AddCategoriesDialogProps {
@@ -22,42 +24,57 @@ export function AddCategoriesDialog({ setup, open, onOpenChange }: AddCategories
 }
 
 function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone: () => void }) {
-  const library = useCategoryLibrary().data ?? [];
+  const [federation, setFederation] = useState<Federation>("ifbb");
+  const library = useCategoryLibrary({ federation, kind: setup.competition.kind }).data ?? [];
   const { addFromLibrary } = useCategoryMutations();
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // "l<id>" = a level, "s<id>" = a sub-group without levels (a category on its own).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Names are unique per competition; the library is case-insensitive, so compare that way too.
   const taken = new Set(setup.categories.map((c) => c.name.toLowerCase()));
-  // One item per level, in library order (age group → sub-group → level). Two library entries
+  // One item per level, or per sub-group without levels, in library order. Two library entries
   // can compose the same name; only the first of them can be picked.
   const listed = new Set<string>();
+  const item = (id: string, name: string, detail: string) => {
+    const key = name.toLowerCase();
+    const disabledReason = taken.has(key) ? "Already in this competition." : listed.has(key) ? "Same name as a category above." : undefined;
+    listed.add(key);
+    return { id, label: name, detail, disabledReason };
+  };
   const items = library.flatMap((group) =>
     group.subgroups.flatMap((subgroup) =>
-      subgroup.levels.map((level) => {
-        const name = categoryName(group.name, subgroup, level.name);
-        const key = name.toLowerCase();
-        const disabledReason = taken.has(key) ? "Already in this competition." : listed.has(key) ? "Same name as a category above." : undefined;
-        listed.add(key);
-        return { id: level.id, label: name, detail: describeCategoryRules(subgroup), disabledReason };
-      }),
+      subgroup.levels.length === 0
+        ? [item(`s${subgroup.id}`, categoryName(group.name, subgroup, ""), `${describeCategoryRules(subgroup)} · no levels`)]
+        : subgroup.levels.map((level) => item(`l${level.id}`, categoryName(group.name, subgroup, level.name), describeCategoryRules(subgroup))),
     ),
   );
-  const chosen = items.filter((item) => !item.disabledReason && selected.has(item.id)).map((item) => item.id);
+  const chosen = items.filter((i) => !i.disabledReason && selected.has(i.id)).map((i) => i.id);
+  const idsOf = (prefix: string) => chosen.filter((id) => id.startsWith(prefix)).map((id) => Number(id.slice(1)));
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    void saveAndClose(() => addFromLibrary.mutateAsync({ competitionId: setup.competition.id, levelIds: chosen }), onDone);
+    void saveAndClose(
+      () => addFromLibrary.mutateAsync({ competitionId: setup.competition.id, levelIds: idsOf("l"), subgroupIds: idsOf("s") }),
+      onDone,
+    );
   }
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4">
+      <FederationPicker
+        value={federation}
+        onChange={(next) => {
+          setFederation(next);
+          setSelected(new Set());
+        }}
+      />
       <CheckList
         items={items}
         selected={selected}
         onToggle={(id, checked) => setSelected((current) => toggleInSet(current, id, checked))}
         empty={
           <>
-            The category library has no levels yet.{" "}
+            The {FEDERATION_LABELS[federation]} {COMPETITION_KIND_LABELS[setup.competition.kind]} category library is empty.{" "}
             <Link to="/categories" className="font-medium text-foreground underline underline-offset-4">
               Create categories
             </Link>{" "}

@@ -7,6 +7,7 @@ import {
   deleteLevel,
   deleteSubgroup,
   listCategoryLibrary,
+  type LibraryKey,
   renameAgeGroup,
   renameLevel,
   updateSubgroup,
@@ -14,8 +15,8 @@ import {
 import { queryKeys } from "@/db/queryKeys";
 import { useDbMutation } from "@/hooks/useDbMutation";
 
-export function useCategoryLibrary() {
-  return useQuery({ queryKey: queryKeys.categoryLibrary, queryFn: listCategoryLibrary });
+export function useCategoryLibrary(library: LibraryKey) {
+  return useQuery({ queryKey: queryKeys.categoryLibraryOf(library.federation, library.kind), queryFn: () => listCategoryLibrary(library) });
 }
 
 export function useCategoryLibraryMutations() {

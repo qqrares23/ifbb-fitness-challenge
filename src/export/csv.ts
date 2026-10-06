@@ -1,4 +1,3 @@
-import type { CompetitionSetup } from "@/db/competitions";
 import type { CompetitionResults } from "@/features/competitions/standings";
 import { resultsTables } from "./standingsTable";
 
@@ -16,14 +15,26 @@ export function toCsv(rows: readonly (readonly string[])[]): string {
 }
 
 /**
- * One flat sheet for the whole competition: a Category column, then the standard results
- * columns. Starts with a UTF-8 BOM so Excel reads accented names correctly.
+ * One sheet for the whole competition: a Category column, then the standard results columns.
+ * A header row starts the sheet and is repeated (after a blank line) wherever the station
+ * columns change, i.e. where a category uses another station set. Starts with a UTF-8 BOM so
+ * Excel reads accented names correctly.
  */
-export function resultsCsv(setup: CompetitionSetup, results: CompetitionResults): string {
-  const { head, categories } = resultsTables(setup, results, {
+export function resultsCsv(results: CompetitionResults): string {
+  const tables = resultsTables(results, {
     stationHeader: (s) => `Station ${s.stationNumber} - ${s.exerciseName ?? ""}`,
     missing: "",
   });
-  const body = categories.flatMap(({ category, body }) => body.map((row) => [category.name, ...row]));
-  return "﻿" + toCsv([["Category", ...head], ...body]);
+  const rows: string[][] = [];
+  let previousHead = "";
+  for (const { category, head, body } of tables) {
+    const headKey = JSON.stringify(head);
+    if (headKey !== previousHead) {
+      if (rows.length > 0) rows.push([]);
+      rows.push(["Category", ...head]);
+      previousHead = headKey;
+    }
+    rows.push(...body.map((row) => [category.name, ...row]));
+  }
+  return "﻿" + toCsv(rows);
 }

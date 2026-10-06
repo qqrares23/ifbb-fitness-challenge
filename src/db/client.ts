@@ -13,3 +13,10 @@ export function db(): Promise<Database> {
   });
   return connection;
 }
+
+/** Closes the connection (e.g. before the database file is replaced); the next `db()` reopens it. */
+export async function closeDb(): Promise<void> {
+  const open = connection;
+  connection = undefined;
+  if (open) await (await open).close();
+}

@@ -62,7 +62,7 @@ export function CompetitionsPage() {
                       </TableCell>
                       <TableCell>{formatDate(c.date)}</TableCell>
                       <TableCell className="text-muted-foreground">{c.location || "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">{c.kind === "speed_fit" ? "—" : c.stationCount}</TableCell>
+                      <TableCell className="text-right tabular-nums">{c.kind === "speed_fit" ? "—" : c.setCount > 1 ? `${c.stationCount} in ${c.setCount} sets` : c.stationCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.categoryCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.entryCount}</TableCell>
                       <TableCell className="pr-4 text-right">
