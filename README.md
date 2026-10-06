@@ -1,6 +1,6 @@
 # IFBB Fitness Challenge
 
-A desktop app (Windows and macOS) for running IFBB competitions fully offline: manage athletes and
+A desktop app (Windows, macOS and Linux) for running IFBB competitions fully offline: manage athletes and
 the exercise library, set up a competition (categories, entries), record results live, and export
 official results as PDF or CSV. Two challenge types:
 
@@ -24,7 +24,7 @@ npm run tauri build   # installers for the current OS, in src-tauri/target/relea
 
 ## Releases
 
-Push a version tag to build installers for both platforms on GitHub Actions:
+Push a version tag to build installers for all three platforms on GitHub Actions:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
@@ -41,11 +41,12 @@ confirmation: right-click the app → **Open**. Signing needs an Apple Developer
 |---|---|
 | `src/engine/` | Pure ranking, age and eligibility rules — no database or UI imports, fully tested |
 | `src/db/` | The only place SQL lives: one module per table |
-| `src/features/` | Screens, one folder per area (athletes, exercises, competitions) |
+| `src/features/` | Screens, one folder per area (athletes, exercises, categories, competitions, data) |
 | `src/export/` | PDF and CSV builders, sharing one results-table layout |
 | `src/components/` | Shared UI (shadcn primitives in `ui/`) |
 | `src-tauri/migrations/` | Database schema and lifecycle rules (enforced by SQLite triggers) |
 
 Ranking: Fitness Challenge by total reps (highest first), Speed Fit by time (fastest first; athletes
-without a time are listed last, unplaced). Equal results share a place and the next place is
+without a time are listed last, unplaced). Equal Fitness Challenge totals are split by reps on the
+last station, then the one before it, and so on. Results still equal share a place and the next place is
 skipped (1, 1, 3). Age for categories = the competition's year minus the year of birth.

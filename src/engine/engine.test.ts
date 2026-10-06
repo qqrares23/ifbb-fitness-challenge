@@ -71,6 +71,18 @@ describe("rankCategory", () => {
     expect(rows.map((r) => r.place)).toEqual([1, 1, 3, 3]);
   });
 
+  it("breaks equal totals on the last station, then the one before it", () => {
+    const six = [1, 2, 3, 4, 5, 6];
+    const reps = (id: number, perStation: number[]) => perStation.map((r, i) => score(id, i + 1, r));
+    const rows = rankCategory(entries, six, [
+      ...reps(1, [10, 10, 10, 10, 10, 10]), // 60, equal to 4 everywhere: shares the place
+      ...reps(2, [10, 10, 10, 10, 9, 11]), // 60, most on station 6: wins
+      ...reps(3, [9, 10, 10, 10, 11, 10]), // 60, ties on 6, beats 1 and 4 on station 5
+      ...reps(4, [10, 10, 10, 10, 10, 10]),
+    ]);
+    expect(rows.map((r) => [r.entry.id, r.place])).toEqual([[2, 1], [3, 2], [1, 3], [4, 3]]);
+  });
+
   it("keeps tied rows in input order", () => {
     const rows = rankCategory([{ id: 9 }, { id: 3 }, { id: 5 }], [1], []);
     expect(rows.map((r) => r.entry.id)).toEqual([9, 3, 5]);
@@ -103,8 +115,9 @@ describe("rankCategory", () => {
 
 describe("assignPlaces", () => {
   it("shares places on equal scores and skips the next ones", () => {
-    expect(assignPlaces([9, 7, 7, 7, 3], (n) => n)).toEqual([1, 2, 2, 2, 5]);
-    expect(assignPlaces([], (n: number) => n)).toEqual([]);
+    const desc = (a: number, b: number) => b - a;
+    expect(assignPlaces([9, 7, 7, 7, 3], desc)).toEqual([1, 2, 2, 2, 5]);
+    expect(assignPlaces([], desc)).toEqual([]);
   });
 });
 

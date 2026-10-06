@@ -10,7 +10,8 @@ export function rankByTime<T extends { id: number }>(entries: readonly T[], time
   const timeByEntry = new Map(times.map((t) => [t.entryId, t.timeMs]));
   const rows = entries.map((entry) => ({ entry, timeMs: timeByEntry.get(entry.id) ?? null, place: null as number | null }));
 
-  const timed = rows.filter((row) => row.timeMs !== null).sort((a, b) => a.timeMs! - b.timeMs!);
-  assignPlaces(timed, (row) => row.timeMs!).forEach((place, index) => (timed[index]!.place = place));
+  const byTime = (a: (typeof rows)[number], b: (typeof rows)[number]) => a.timeMs! - b.timeMs!;
+  const timed = rows.filter((row) => row.timeMs !== null).sort(byTime);
+  assignPlaces(timed, byTime).forEach((place, index) => (timed[index]!.place = place));
   return [...timed, ...rows.filter((row) => row.timeMs === null)];
 }

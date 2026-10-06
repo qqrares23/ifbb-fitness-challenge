@@ -1,6 +1,6 @@
 # IFBB Fitness Challenge — Developer Documentation
 
-Version 0.4 · Tauri 2 · React 19 · TypeScript · SQLite
+Version 0.6 · Tauri 2 · React 19 · TypeScript · SQLite
 
 This document explains how the app is built and why, so that a new developer can change it safely.
 For a short user-facing overview see `README.md`.
@@ -51,7 +51,7 @@ identifier `org.ifbb.fitnesschallenge`. There is no server, no network access an
 │  app/            main.tsx → QueryClient → MotionConfig → DatabaseGate → Router │
 │                                                                                │
 │  features/       Screens + hooks (useX / useXMutations) + pure UI rules        │
-│     athletes · exercises · categories · competitions (detail/, results/)       │
+│     athletes · exercises · categories · competitions · data                    │
 │        │                         │                                             │
 │        │ useQuery / useDbMutation│ pure functions                              │
 │        ▼                         ▼                                             │
@@ -63,7 +63,7 @@ identifier `org.ifbb.fitnesschallenge`. There is no server, no network access an
 └────────┼───────────────────────────────────────────────────────────────────────┘
          │ IPC (@tauri-apps/plugin-sql, plugin-dialog, plugin-fs)
 ┌────────▼──────────────────────── Rust (src-tauri) ─────────────────────────────┐
-│  lib.rs: registers plugins + 5 SQL migrations                                  │
+│  lib.rs: registers plugins + 12 SQL migrations + database transfer commands    │
 │  SQLite file: CHECK constraints, FKs, and TRIGGERS enforce the lifecycle rules │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -115,15 +115,17 @@ src/
     categories/   category library page, form dialog, hooks, validateCategory (+test)
     competitions/ list page, form dialog, badges, permissions, readiness, standings, hooks
       detail/     CompetitionDetailPage + Stations/Categories/Entries panels + add dialogs
-      results/    ResultsPanel, RepsGrid, TimesTable, Leaderboard, WinnerBanner, ExportButtons
-  export/       exportResults (entry), standingsTable (shared layout), pdf, pdfAssets, csv, saveFile
+      results/    ResultsPanel, RepsGrid, TimesTable, OverallTable, AthleteCell, PlaceBadge,
+                  ExpandableTable, ExportButtons, PdfLogoDialog
+    data/         DatabaseTransfer (export / import the whole database, in the sidebar)
+  export/       exportResults (entry), standingsTable (shared layout), pdf, pdfAssets, logos, csv, saveFile
   components/
     ui/         shadcn primitives (generated, don't hand-edit unless needed)
     icons/      lucide-animated icons + animated.ts (useIconAnimation)
     layout/     AppLayout (sidebar + outlet), PageHeader
     shared/     LibraryPage, FormDialog, CommitInput, CheckList, ConfirmDialog, QueryState, …
   hooks/        useDbMutation, useFlipAnimation
-  lib/          countries, dates, errors, labels, motion, search, utils
+  lib/          countries, dates, errors, images, labels, motion, search, utils
   assets/       IFBB logo, Noto Sans fonts (for PDF)
 ```
 
@@ -136,7 +138,7 @@ src/
 - registers `tauri-plugin-sql` with the migration list for `sqlite:fitness-challenge.db` (the plugin
   keeps the file in the app **config** dir, e.g. `%APPDATA%\org.ifbb.fitnesschallenge\`);
 - registers `tauri-plugin-dialog` (native Save-As / Open) and `tauri-plugin-fs` (write the chosen file);
-- defines four commands for moving the database (`src/db/backup.ts` calls them):
+- defines five commands for moving the database (`src/db/backup.ts` calls them):
   - `prepare_export(destination)` / `finish_export(destination)`: the app runs `VACUUM INTO` on
     `<destination>.partial` (a complete, consistent copy, whatever is in the write-ahead log or
     being read on another pooled connection), then it is renamed over `destination`;
@@ -362,8 +364,8 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 |---|---|
 | `ageOn(dob, date)` | **year(date) − year(dob)**. Month and day are ignored, so an athlete keeps one age for the whole calendar year. Throws on malformed dates. |
 | `eligibilityProblems(athlete, rules, competitionDate)` | User-facing reasons (gender mismatch, below min, above max; bounds inclusive). Empty = eligible. |
-| `assignPlaces(sorted, score)` | Standard competition ranking **1, 1, 3**. |
-| `rankCategory(entries, stationNumbers, scores)` | Fitness Challenge. Sums reps (a missing station counts as 0 but sets `complete = false`), sorts descending and assigns places. The stable sort keeps ties in input order (the caller passes bib order). Scores for unknown entries or stations are ignored. |
+| `assignPlaces(sorted, compare)` | Standard competition ranking **1, 1, 3**: items that compare equal share a place. |
+| `rankCategory(entries, stationNumbers, scores)` | Fitness Challenge. Sums reps (a missing station counts as 0 but sets `complete = false`) and sorts descending. Equal totals are split by reps on the last station, then the one before it, and so on; only athletes equal on every station share a place. The stable sort keeps ties in input order (the caller passes bib order). Scores for unknown entries or stations are ignored. |
 | `rankByTime(entries, times)` | Speed Fit. Fastest first, ties share a place, athletes with no time come last with `place = null`. |
 | `parseDuration(text)` | Accepts `83.4`, `1:23.45`, `01:23`, `1:02:03,5` (`.` or `,`, up to 2 decimals). Only the largest unit written may exceed 59. Must be > 0 and ≤ `MAX_TIME_MS`. Returns `undefined` if invalid. |
 | `formatDuration(ms)` | `m:ss.cc`, or `h:mm:ss.cc` from one hour. Round-trips with `parseDuration`. |
@@ -483,8 +485,8 @@ exportResults(format, setup, results, logos)
   │       (a table per set; with several sets also "Overall": <total per set> | Total | Placement)
   │     Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
   │     (Club only when someone in the category has one)
-  ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a header between the left
-  │                      and right logos (PdfLogoDialog: IFBB, another image or none on each side;
+  ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a bold, centred header
+  │                      (name, date · location, category) between the left and right logos (PdfLogoDialog: IFBB, another image or none on each side;
   │                      remembered in localStorage) naming the category once:
   │                      "<kind> — <categoryTitle> Official Results", then an autoTable,
   │                      podium cell colours, "Generated …" and "Page x of y" footer.
@@ -509,7 +511,7 @@ exportResults(format, setup, results, logos)
 2. `db/scores.setScore` validates again, then runs the upsert.
 3. SQLite triggers check that the competition is a Fitness Challenge and is `running`.
 4. On success, `["competitions", id, "results"]` is invalidated and refetched.
-5. `competitionResults` re-ranks, and the Leaderboard rows glide to their new places.
+5. `competitionResults` re-ranks, and the `RepsGrid` rows glide to their new places.
 6. On failure, a toast shows the trigger message and the input reverts.
 
 **Late entry.** While running, the user picks *Enter athlete* and ticks an athlete:
@@ -621,8 +623,6 @@ call `saveFile()` from `exportResults.ts`.
   edited by hand (1–99 999 in the UI).
 - **Category library** is copied, not linked. Renaming a preset never renames it inside existing
   competitions (intended).
-- `README.md` says "Windows and macOS", but CI also produces Linux packages. Its Structure table
-  also predates the `features/categories/` folder.
 - App icons in `src-tauri/icons/` are generated from `src/assets/ifbb-logo.png` (centred on a white
   rounded square) with `npx tauri icon <square.png>`.
 - The `next-themes` dependency and the `.dark` tokens exist, but there is no theme switcher yet.

@@ -32,16 +32,16 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
   const pageWidth = doc.internal.pageSize.getWidth();
 
   function drawHeader(category: Category, part: string | null) {
-    const leftWidth = drawLogo(doc, logos.left, MARGIN, 10, 22, "left");
+    drawLogo(doc, logos.left, MARGIN, 10, 22, "left");
     drawLogo(doc, logos.right, pageWidth - MARGIN, 10, 22, "right");
-    const textX = MARGIN + (leftWidth > 0 ? leftWidth + 6 : 0);
-    doc.setFont(PDF_FONT, "bold").setFontSize(18).setTextColor(...INK).text(competition.name, textX, 18);
+    const centerX = pageWidth / 2;
+    const center = { align: "center" } as const;
+    doc.setFont(PDF_FONT, "bold").setFontSize(18).setTextColor(...INK).text(competition.name, centerX, 18, center);
     doc
-      .setFont(PDF_FONT, "normal")
       .setFontSize(10)
       .setTextColor(MUTED)
-      .text([formatDate(competition.date), competition.location].filter(Boolean).join(" · "), textX, 25)
-      .text(`${COMPETITION_KIND_LABELS[competition.kind]} — ${categoryTitle(category)}${part ? ` · ${part}` : ""} Official Results`, textX, 30);
+      .text([formatDate(competition.date), competition.location].filter(Boolean).join(" · "), centerX, 25, center)
+      .text(`${COMPETITION_KIND_LABELS[competition.kind]} — ${categoryTitle(category)}${part ? ` · ${part}` : ""} Official Results`, centerX, 30, center);
   }
 
   const tables = resultsTables(results, {
