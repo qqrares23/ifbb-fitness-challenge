@@ -48,7 +48,7 @@ export async function listCompetitions(): Promise<CompetitionSummary[]> {
     `SELECT ${COLUMNS},
        (SELECT COUNT(*) FROM competition_stations s WHERE s.competition_id = c.id) AS stationCount,
        (SELECT COUNT(*) FROM categories k WHERE k.competition_id = c.id) AS categoryCount,
-       (SELECT COUNT(*) FROM entries e WHERE e.competition_id = c.id) AS entryCount
+       (SELECT COUNT(DISTINCT e.athlete_id) FROM entries e WHERE e.competition_id = c.id) AS entryCount
      FROM competitions c
      ORDER BY date DESC, id DESC`,
   );

@@ -58,7 +58,7 @@ export function useStationMutations() {
 export function useCategoryMutations() {
   const count = (n: number) => `${n} categor${n === 1 ? "y" : "ies"}`;
   return {
-    addFromLibrary: useDbMutation(addCategoriesFromLibrary, { invalidates, success: ({ presetIds }) => `${count(presetIds.length)} added.` }),
+    addFromLibrary: useDbMutation(addCategoriesFromLibrary, { invalidates, success: ({ levelIds }) => `${count(levelIds.length)} added.` }),
     remove: useDbMutation(deleteCategory, { invalidates, success: "Category removed from the competition." }),
   };
 }

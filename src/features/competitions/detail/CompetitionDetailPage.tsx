@@ -130,7 +130,7 @@ function CompetitionView({ setup, results }: { setup: CompetitionSetup; results:
           {locked && <TabsTrigger value="results">{competition.status === "finished" ? "Results" : speedFit ? "Timing" : "Scoring"}</TabsTrigger>}
           {!speedFit && <TabsTrigger value="stations">Stations ({stations.length})</TabsTrigger>}
           <TabsTrigger value="categories">Categories ({categories.length})</TabsTrigger>
-          <TabsTrigger value="athletes">Athletes ({entries.length})</TabsTrigger>
+          <TabsTrigger value="athletes">Athletes ({new Set(entries.map((e) => e.athleteId)).size})</TabsTrigger>
         </TabsList>
         {locked && results && (
           <TabsContent value="results">

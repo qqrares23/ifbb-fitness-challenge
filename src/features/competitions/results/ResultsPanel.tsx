@@ -1,12 +1,15 @@
 import { useState } from "react";
+import { ChevronLeft, ChevronRight, CircleCheck } from "lucide-react";
 import { UserPlusIcon } from "@/components/icons/user-plus";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import { describeCategoryRules } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { AddEntriesDialog } from "../detail/AddEntriesDialog";
-import { leaderboardRows, type CompetitionResults } from "../standings";
+import { groupBySubgroup, leaderboardRows, type CompetitionResults } from "../standings";
 import { Leaderboard } from "./Leaderboard";
 import { RepsGrid } from "./RepsGrid";
 import { TimesTable } from "./TimesTable";
@@ -33,21 +36,74 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   const expected = current.rows.length * (speedFit ? 1 : setup.stations.length);
   const rows = leaderboardRows(results, index);
 
+  // Sub-group → level navigation, so officials can move on as soon as a category is done.
+  const subgroups = groupBySubgroup(categories.map((c) => c.category));
+  const currentSubgroup = subgroups.find((g) => g.categoryIndexes.includes(index))!;
+  const isDone = (i: number) => categories[i]!.rows.length > 0 && categories[i]!.missingResults === 0;
+  const subgroupDone = (indexes: number[]) => indexes.some((i) => categories[i]!.rows.length > 0) && indexes.every((i) => isDone(i) || categories[i]!.rows.length === 0);
+  const goTo = (i: number) => setCategoryId(categories[i]!.category.id);
+  const previous = categories[index - 1];
+  const next = categories[index + 1];
+  const currentDone = isDone(index);
+
+  function openSubgroup(key: string) {
+    const indexes = subgroups.find((g) => g.key === key)!.categoryIndexes;
+    // Land on the first level still waiting for results.
+    goTo(indexes.find((i) => !isDone(i) && categories[i]!.rows.length > 0) ?? indexes[0]!);
+  }
+
   return (
     <div className="grid gap-4">
-      <Tabs value={String(current.category.id)} onValueChange={(value) => setCategoryId(Number(value))}>
+      <Tabs value={currentSubgroup.key} onValueChange={openSubgroup}>
         <TabsList variant="line" className="h-auto flex-wrap justify-start">
-          {categories.map(({ category, missingResults }) => (
-            <TabsTrigger key={category.id} value={String(category.id)} className="flex-none">
-              {category.name}
-              {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
+          {subgroups.map(({ key, label, categoryIndexes }) => (
+            <TabsTrigger key={key} value={key} className="flex-none">
+              {subgroupDone(categoryIndexes) && <CircleCheck className="text-emerald-600" />}
+              {label}
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {current.category.level ? (
+          <Tabs value={String(current.category.id)} onValueChange={(value) => setCategoryId(Number(value))}>
+            <TabsList className="h-auto flex-wrap">
+              {currentSubgroup.categoryIndexes.map((i) => {
+                const { category, missingResults } = categories[i]!;
+                return (
+                  <TabsTrigger key={category.id} value={String(category.id)} className="flex-none px-3">
+                    {isDone(i) && <CircleCheck className="text-emerald-600" />}
+                    {category.level}
+                    {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={!previous} onClick={() => goTo(index - 1)} aria-label="Previous category">
+            <ChevronLeft />
+          </Button>
+          <Button
+            variant={currentDone && next ? "default" : "outline"}
+            size="sm"
+            disabled={!next}
+            onClick={() => goTo(index + 1)}
+            className={cn(currentDone && next && "animate-in zoom-in-95")}
+          >
+            {next ? `Next: ${next.category.name}` : "Last category"}
+            <ChevronRight />
+          </Button>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
+          {currentDone && <span className="mr-1 font-medium text-emerald-700">All results in.</span>}
           {describeCategoryRules(current.category)} · {current.rows.length} athletes · {expected - current.missingResults} of {expected}{" "}
           {speedFit ? "times" : "station results"} recorded
         </p>

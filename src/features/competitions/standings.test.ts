@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { CompetitionSetup } from "@/db/competitions";
-import { competitionResults, leaderboardRows } from "./standings";
+import { competitionResults, groupBySubgroup, leaderboardRows } from "./standings";
+
+describe("groupBySubgroup", () => {
+  it("groups levels under their sub-group in order, keeping pre-hierarchy categories on their own", () => {
+    const junior = { ageGroup: "Junior", gender: "male", minAge: 14, maxAge: 23 } as const;
+    const groups = groupBySubgroup([
+      { ...junior, id: 1, name: "Junior Men 14–23 · Bronze", level: "Bronze" },
+      { ...junior, id: 2, name: "Junior Women 16–23 · Bronze", level: "Bronze", gender: "female", minAge: 16 },
+      { ...junior, id: 3, name: "Junior Men 14–23 · Gold", level: "Gold" },
+      { id: 4, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "" },
+    ]);
+    expect(groups.map((g) => [g.label, g.categoryIndexes])).toEqual([
+      ["Junior Men 14–23", [0, 2]],
+      ["Junior Women 16–23", [1]],
+      ["Open", [3]],
+    ]);
+  });
+});
 
 const athlete = { firstName: "A", lastName: "B", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", lateEntry: false } as const;
 
@@ -11,8 +28,8 @@ const setup: CompetitionSetup = {
     { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
   ],
   categories: [
-    { id: 10, name: "Men", gender: "male", minAge: null, maxAge: null },
-    { id: 11, name: "Empty", gender: "mixed", minAge: null, maxAge: null },
+    { id: 10, name: "Men", gender: "male", minAge: null, maxAge: null, ageGroup: "", level: "" },
+    { id: 11, name: "Empty", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "" },
   ],
   entries: [
     { ...athlete, id: 102, athleteId: 2, categoryId: 10, bibNumber: 7 },

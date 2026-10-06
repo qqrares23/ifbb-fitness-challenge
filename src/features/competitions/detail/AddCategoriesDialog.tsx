@@ -3,8 +3,8 @@ import { Link } from "react-router";
 import { CheckList, toggleInSet } from "@/components/shared/CheckList";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
 import type { CompetitionSetup } from "@/db/competitions";
-import { useCategoryPresets } from "@/features/categories/useCategoryPresets";
-import { describeCategoryRules } from "@/lib/labels";
+import { useCategoryLibrary } from "@/features/categories/useCategoryLibrary";
+import { categoryName, describeCategoryRules } from "@/lib/labels";
 import { useCategoryMutations } from "../useCompetitions";
 
 interface AddCategoriesDialogProps {
@@ -22,23 +22,31 @@ export function AddCategoriesDialog({ setup, open, onOpenChange }: AddCategories
 }
 
 function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone: () => void }) {
-  const presets = useCategoryPresets().data ?? [];
+  const library = useCategoryLibrary().data ?? [];
   const { addFromLibrary } = useCategoryMutations();
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   // Names are unique per competition; the library is case-insensitive, so compare that way too.
   const taken = new Set(setup.categories.map((c) => c.name.toLowerCase()));
-  const items = presets.map((preset) => ({
-    id: preset.id,
-    label: preset.name,
-    detail: describeCategoryRules(preset),
-    disabledReason: taken.has(preset.name.toLowerCase()) ? "Already in this competition." : undefined,
-  }));
+  // One item per level, in library order (age group → sub-group → level).
+  const items = library.flatMap((group) =>
+    group.subgroups.flatMap((subgroup) =>
+      subgroup.levels.map((level) => {
+        const name = categoryName(group.name, subgroup, level.name);
+        return {
+          id: level.id,
+          label: name,
+          detail: describeCategoryRules(subgroup),
+          disabledReason: taken.has(name.toLowerCase()) ? "Already in this competition." : undefined,
+        };
+      }),
+    ),
+  );
   const chosen = items.filter((item) => !item.disabledReason && selected.has(item.id)).map((item) => item.id);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    void saveAndClose(() => addFromLibrary.mutateAsync({ competitionId: setup.competition.id, presetIds: chosen }), onDone);
+    void saveAndClose(() => addFromLibrary.mutateAsync({ competitionId: setup.competition.id, levelIds: chosen }), onDone);
   }
 
   return (
@@ -49,7 +57,7 @@ function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone:
         onToggle={(id, checked) => setSelected((current) => toggleInSet(current, id, checked))}
         empty={
           <>
-            The category library is empty.{" "}
+            The category library has no levels yet.{" "}
             <Link to="/categories" className="font-medium text-foreground underline underline-offset-4">
               Create categories
             </Link>{" "}

@@ -15,7 +15,7 @@ const setup: CompetitionSetup = {
     { stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" },
     { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
   ],
-  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null }],
+  categories: [{ id: 1, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "" }],
   entries: [entry(1, "Ana"), entry(2, "Ion"), entry(3, "Eva")],
 };
 

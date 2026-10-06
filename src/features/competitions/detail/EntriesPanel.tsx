@@ -78,8 +78,9 @@ export function EntriesPanel({ setup, permissions, entryIdsWithResults }: Entrie
         title="Remove athlete?"
         description={
           removing
-            ? `#${removing.bibNumber} ${removing.firstName} ${removing.lastName} will be taken out of this competition` +
-              (entryIdsWithResults.has(removing.id) ? ", and the results already recorded for them will be deleted." : ".")
+            ? `#${removing.bibNumber} ${removing.firstName} ${removing.lastName} will be taken out of "${categories.find((c) => c.id === removing.categoryId)?.name}"` +
+              (entryIdsWithResults.has(removing.id) ? ", and the results already recorded there will be deleted." : ".") +
+              " Their other categories are not affected."
             : ""
         }
         confirmLabel="Remove"

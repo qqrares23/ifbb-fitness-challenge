@@ -3,6 +3,7 @@ import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
 import type { RecordedResults } from "@/db/results";
 import { formatDuration, rankByTime, rankCategory, type RankedRow, type TimedRow } from "@/engine";
+import { subgroupName } from "@/lib/labels";
 
 interface CategoryResultsBase {
   category: Category;
@@ -59,6 +60,33 @@ export function entriesWithResults(results: CompetitionResults | null): Readonly
     ? results.categories.flatMap((c) => c.rows.filter((r) => r.timeMs !== null).map((r) => r.entry.id))
     : results.categories.flatMap((c) => c.rows.filter((r) => [...r.perStation.values()].some((reps) => reps !== null)).map((r) => r.entry.id));
   return new Set(ids);
+}
+
+/** A library sub-group within a competition (e.g. "Junior Men 14–23") and the indexes of its levels. */
+export interface SubgroupCategories {
+  key: string;
+  label: string;
+  categoryIndexes: number[];
+}
+
+/**
+ * Groups categories by sub-group, in order of first appearance. Categories created before the
+ * hierarchy have no level and form a group of their own.
+ */
+export function groupBySubgroup(categories: readonly Category[]): SubgroupCategories[] {
+  const groups = new Map<string, SubgroupCategories>();
+  categories.forEach((category, index) => {
+    const key = category.level
+      ? JSON.stringify([category.ageGroup, category.gender, category.minAge, category.maxAge])
+      : `name:${category.name}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, label: category.level ? subgroupName(category.ageGroup, category) : category.name, categoryIndexes: [] };
+      groups.set(key, group);
+    }
+    group.categoryIndexes.push(index);
+  });
+  return [...groups.values()];
 }
 
 /** A challenge-neutral view of a ranked row, for leaderboards. */

@@ -35,6 +35,18 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0005_late_entries.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "category_hierarchy",
+            sql: include_str!("../migrations/0006_category_hierarchy.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "multiple_levels",
+            sql: include_str!("../migrations/0007_multiple_levels.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

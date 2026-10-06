@@ -2,7 +2,10 @@ import type { Athlete } from "./athletes";
 import { db } from "./client";
 import { withConstraintMessages } from "./errors";
 
-/** An athlete entered into a competition, with the athlete's details joined in. */
+/**
+ * An athlete entered into one category of a competition, with the athlete's details joined in.
+ * An athlete can have several entries (one per category), all sharing one bib number.
+ */
 export interface Entry extends Omit<Athlete, "id"> {
   id: number;
   athleteId: number;
@@ -25,7 +28,10 @@ export async function listEntries(competitionId: number): Promise<Entry[]> {
   return rows.map((row) => ({ ...row, lateEntry: row.lateEntry === 1 }));
 }
 
-/** Enters each athlete with the next free bib number of the competition. */
+/**
+ * Enters each athlete into the category. An athlete already in another category of this
+ * competition keeps their bib; anyone new gets the next free bib number.
+ */
 export async function addEntries(args: { competitionId: number; categoryId: number; athleteIds: number[] }): Promise<void> {
   const conn = await db();
   for (const athleteId of args.athleteIds) {
@@ -33,23 +39,31 @@ export async function addEntries(args: { competitionId: number; categoryId: numb
     await withConstraintMessages(
       conn.execute(
         `INSERT INTO entries (competition_id, category_id, athlete_id, bib_number)
-         SELECT $1, $2, $3, COALESCE(MAX(bib_number), 0) + 1 FROM entries WHERE competition_id = $1`,
+         SELECT $1, $2, $3, COALESCE(
+           (SELECT bib_number FROM entries WHERE competition_id = $1 AND athlete_id = $3 LIMIT 1),
+           (SELECT MAX(bib_number) FROM entries WHERE competition_id = $1) + 1,
+           1)`,
         [args.competitionId, args.categoryId, athleteId],
       ),
-      { unique: "That athlete is already entered in this competition." },
+      { unique: "That athlete is already entered in this category." },
     );
   }
 }
 
 export async function setEntryCategory(args: { entryId: number; categoryId: number }): Promise<void> {
-  await (await db()).execute("UPDATE entries SET category_id = $1 WHERE id = $2", [args.categoryId, args.entryId]);
+  await withConstraintMessages(
+    (await db()).execute("UPDATE entries SET category_id = $1 WHERE id = $2", [args.categoryId, args.entryId]),
+    { unique: "That athlete is already entered in that category." },
+  );
 }
 
+/** Changes the athlete's bib on every one of their entries in the competition. */
 export async function setEntryBib(args: { entryId: number; bibNumber: number }): Promise<void> {
   if (!Number.isInteger(args.bibNumber) || args.bibNumber < 1) throw new Error("A bib number must be a whole number of 1 or more.");
-  await withConstraintMessages(
-    (await db()).execute("UPDATE entries SET bib_number = $1 WHERE id = $2", [args.bibNumber, args.entryId]),
-    { unique: `Bib ${args.bibNumber} is already taken in this competition.` },
+  await (await db()).execute(
+    `UPDATE entries SET bib_number = $1
+     WHERE (competition_id, athlete_id) = (SELECT competition_id, athlete_id FROM entries WHERE id = $2)`,
+    [args.bibNumber, args.entryId],
   );
 }
 

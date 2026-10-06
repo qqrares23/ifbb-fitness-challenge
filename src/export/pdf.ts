@@ -1,9 +1,10 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { CompetitionResults } from "@/features/competitions/standings";
 import { formatDate } from "@/lib/dates";
-import { COMPETITION_KIND_LABELS, describeCategoryRules } from "@/lib/labels";
+import { categoryTitle, COMPETITION_KIND_LABELS, describeCategoryRules } from "@/lib/labels";
 import { drawLogo, PDF_FONT, useUnicodeFont } from "./pdfAssets";
 import { resultsTables } from "./standingsTable";
 
@@ -16,23 +17,26 @@ const PODIUM_FILLS: [number, number, number][] = [
   [254, 215, 170], // bronze
 ];
 
-type DocWithLastTable = jsPDF & { lastAutoTable: { finalY: number } };
-
-/** Official results: IFBB header, then one table per category. Landscape, so many stations still fit. */
+/**
+ * Official results: one page per category (a long one continues onto the next pages), each with
+ * the IFBB header naming the category. Landscape, so many stations still fit.
+ */
 export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults): Uint8Array {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" }) as DocWithLastTable;
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   useUnicodeFont(doc);
   const pageHeight = doc.internal.pageSize.getHeight();
   const { competition } = setup;
 
-  const textX = MARGIN + drawLogo(doc, MARGIN, 10, 22) + 6;
-  doc.setFont(PDF_FONT, "bold").setFontSize(18).setTextColor(...INK).text(competition.name, textX, 18);
-  doc
-    .setFont(PDF_FONT, "normal")
-    .setFontSize(10)
-    .setTextColor(MUTED)
-    .text([formatDate(competition.date), competition.location].filter(Boolean).join(" · "), textX, 25)
-    .text(`${COMPETITION_KIND_LABELS[competition.kind]} — Official results`, textX, 30);
+  function drawHeader(category: Category) {
+    const textX = MARGIN + drawLogo(doc, MARGIN, 10, 22) + 6;
+    doc.setFont(PDF_FONT, "bold").setFontSize(18).setTextColor(...INK).text(competition.name, textX, 18);
+    doc
+      .setFont(PDF_FONT, "normal")
+      .setFontSize(10)
+      .setTextColor(MUTED)
+      .text([formatDate(competition.date), competition.location].filter(Boolean).join(" · "), textX, 25)
+      .text(`${COMPETITION_KIND_LABELS[competition.kind]} — ${categoryTitle(category)} Official Results`, textX, 30);
+  }
 
   const { head, categories } = resultsTables(setup, results, {
     stationHeader: (s) => `S${s.stationNumber}\n${s.exerciseName ?? ""}`,
@@ -41,20 +45,16 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults)
   const nameColumn = 1;
   const placementColumn = head.length - 1;
 
-  let y = 44;
-  for (const { category, body } of categories) {
-    // Keep a category heading together with at least the start of its table.
-    if (y > pageHeight - 40) {
-      doc.addPage();
-      y = 18;
-    }
+  for (const [index, { category, body }] of categories.entries()) {
+    if (index > 0) doc.addPage();
+    drawHeader(category);
+    const y = 44;
     doc.setFont(PDF_FONT, "bold").setFontSize(12).setTextColor(...INK).text(category.name, MARGIN, y);
     const nameWidth = doc.getTextWidth(category.name);
     doc.setFont(PDF_FONT, "normal").setFontSize(9).setTextColor(MUTED).text(describeCategoryRules(category), MARGIN + nameWidth + 4, y);
 
     if (body.length === 0) {
       doc.text("No athletes.", MARGIN, y + 6);
-      y += 16;
       continue;
     }
 
@@ -81,7 +81,6 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults)
         }
       },
     });
-    y = doc.lastAutoTable.finalY + 12;
   }
 
   const generated = `Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`;

@@ -48,14 +48,14 @@ function AddEntriesForm({ setup, initialCategoryId, onDone }: AddEntriesFormProp
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const category = categories.find((c) => c.id === categoryId);
 
-  // One entry per athlete per competition: anyone already entered is not offered again.
+  // An athlete can enter several categories (levels), but each one only once.
   const candidates = useMemo(() => {
-    const entered = new Set(entries.map((e) => e.athleteId));
+    const entered = new Set(entries.filter((e) => e.categoryId === categoryId).map((e) => e.athleteId));
     return athletes
       .filter((a) => !entered.has(a.id))
       .map((athlete) => ({ athlete, problems: category ? eligibilityProblems(athlete, category, competition.date) : [] }))
       .sort((a, b) => a.problems.length - b.problems.length);
-  }, [athletes, entries, category, competition.date]);
+  }, [athletes, entries, categoryId, category, competition.date]);
 
   const visible = filterBySearch(candidates, search, ({ athlete }) => [athlete.firstName, athlete.lastName, athlete.country, countryName(athlete.country)]);
   const chosen = candidates.filter((c) => c.problems.length === 0 && selected.has(c.athlete.id)).map((c) => c.athlete.id);
@@ -98,8 +98,8 @@ function AddEntriesForm({ setup, initialCategoryId, onDone }: AddEntriesFormProp
 
         {competition.status === "running" && (
           <p className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            The competition is running: this is a late entry. The athlete gets the next free bib, starts with no results and is
-            marked "Late entry".
+            The competition is running: this is a late entry. The athlete keeps their bib if already entered in another category (or gets the
+            next free one), starts with no results and is marked "Late entry".
           </p>
         )}
 
@@ -112,7 +112,7 @@ function AddEntriesForm({ setup, initialCategoryId, onDone }: AddEntriesFormProp
           }))}
           selected={selected}
           onToggle={(id, checked) => setSelected((current) => toggleInSet(current, id, checked))}
-          empty={candidates.length === 0 ? "Every athlete is already entered in this competition." : "No athlete matches the search."}
+          empty={candidates.length === 0 ? "Every athlete is already entered in this category." : "No athlete matches the search."}
         />
 
         <FormActions

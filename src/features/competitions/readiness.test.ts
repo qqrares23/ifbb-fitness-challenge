@@ -8,7 +8,7 @@ const ready: CompetitionSetup = {
     { stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" },
     { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" },
   ],
-  categories: [{ id: 10, name: "Juniors", gender: "male", minAge: 16, maxAge: 20 }],
+  categories: [{ id: 10, name: "Juniors", gender: "male", minAge: 16, maxAge: 20, ageGroup: "", level: "" }],
   entries: [
     { id: 100, athleteId: 1, categoryId: 10, bibNumber: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU", lateEntry: false },
   ],
@@ -43,7 +43,7 @@ describe("competitionReadiness", () => {
     const { blocking, warnings } = competitionReadiness({
       ...ready,
       stations: [...ready.stations, { stationNumber: 3, exerciseId: 1, exerciseName: "Push-ups" }],
-      categories: [...ready.categories, { id: 11, name: "Masters", gender: "mixed", minAge: 40, maxAge: null }],
+      categories: [...ready.categories, { id: 11, name: "Masters", gender: "mixed", minAge: 40, maxAge: null, ageGroup: "", level: "" }],
     });
     expect(blocking).toEqual([]);
     expect(warnings).toHaveLength(2);
