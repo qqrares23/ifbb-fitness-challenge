@@ -38,7 +38,10 @@ export function ExpandableTable({ title, children }: { title: string; children: 
 
   return (
     <div
-      onDoubleClick={(event) => !isTyping(event.target) && setExpanded((value) => !value)}
+      onDoubleClick={(event) => {
+        // React bubbles events from portals (e.g. the exercise photo dialog) through here: only the table counts.
+        if (event.currentTarget.contains(event.target as Node) && !isTyping(event.target)) setExpanded((value) => !value);
+      }}
       className={cn(expanded && "fixed inset-0 z-50 flex animate-in flex-col overflow-auto bg-background p-6 fade-in-0 zoom-in-95 duration-200")}
     >
       {expanded && (

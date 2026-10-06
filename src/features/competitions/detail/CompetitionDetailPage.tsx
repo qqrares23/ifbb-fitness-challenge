@@ -111,7 +111,12 @@ function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionVie
         </AnimatedButton>
       )}
       {competition.status === "running" && (
-        <AnimatedButton icon={CircleCheckIcon} onClick={() => setPending("finish")}>
+        <AnimatedButton
+          icon={CircleCheckIcon}
+          disabled={readiness.blocking.length > 0}
+          title={readiness.blocking.length > 0 ? "Fix the problems listed above first." : undefined}
+          onClick={() => setPending("finish")}
+        >
           Finish competition
         </AnimatedButton>
       )}

@@ -12,9 +12,11 @@ const FILTERS = [{ name: "Fitness Challenge database", extensions: ["db"] }];
 export async function exportDatabase(): Promise<boolean> {
   const destination = await save({ defaultPath: `fitness-challenge-${todayIso()}.db`, filters: FILTERS });
   if (!destination) return false;
-  // Move everything still in the write-ahead log into the main file, so the copy is complete.
-  await (await db()).execute("PRAGMA wal_checkpoint(TRUNCATE)");
-  await invoke("export_database", { destination });
+  // VACUUM INTO writes a complete, consistent copy (including anything still in the write-ahead
+  // log, even while another connection is reading) to a fresh file, which then replaces the target.
+  const partial = await invoke<string>("prepare_export", { destination });
+  await (await db()).execute("VACUUM INTO $1", [partial]);
+  await invoke("finish_export", { destination });
   return true;
 }
 

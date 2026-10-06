@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { hasDatabaseBackup, restoreDatabaseBackup } from "@/db/backup";
 import { db } from "@/db/client";
@@ -30,7 +31,11 @@ export function DatabaseGate({ children }: { children: ReactNode }) {
           <Button variant="outline" onClick={() => refetch()}>
             Try again
           </Button>
-          {backup.data && <Button onClick={() => void restoreDatabaseBackup()}>Restore the database from before the last import</Button>}
+          {backup.data && (
+            <Button onClick={() => restoreDatabaseBackup().catch((e: unknown) => toast.error(errorMessage(e)))}>
+              Restore the database from before the last import
+            </Button>
+          )}
         </div>
       </div>
     );

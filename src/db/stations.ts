@@ -50,7 +50,11 @@ export async function createStationSet({ competitionId }: { competitionId: numbe
   const conn = await db();
   const names = await conn.select<{ name: string }[]>("SELECT name FROM station_sets WHERE competition_id = $1", [competitionId]);
   const result = await conn.execute("INSERT INTO station_sets (competition_id, name) VALUES ($1, $2)", [competitionId, nextSetName(names.map((n) => n.name))]);
-  await conn.execute("UPDATE categories SET station_set_id = $1 WHERE competition_id = $2 AND station_set_id IS NULL", [result.lastInsertId, competitionId]);
+  // Later sets start unused: categories left without a set (e.g. after deleting one) are pointed
+  // at the right set by hand, and readiness flags them until then.
+  if (names.length === 0) {
+    await conn.execute("UPDATE categories SET station_set_id = $1 WHERE competition_id = $2 AND station_set_id IS NULL", [result.lastInsertId, competitionId]);
+  }
 }
 
 export async function renameStationSet({ id, name }: { id: number; name: string }): Promise<void> {

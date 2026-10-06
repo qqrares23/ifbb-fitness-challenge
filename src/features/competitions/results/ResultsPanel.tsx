@@ -43,7 +43,7 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   // Sub-group → level navigation, so officials can move on as soon as a category is done.
   const subgroups = groupBySubgroup(categories.map((c) => c.category));
   const currentSubgroup = subgroups.find((g) => g.categoryIndexes.includes(index))!;
-  const isDone = (i: number) => categories[i]!.athletes > 0 && categories[i]!.missingResults === 0;
+  const isDone = (i: number) => categories[i]!.athletes > 0 && categories[i]!.resultsPerAthlete > 0 && categories[i]!.missingResults === 0;
   const subgroupDone = (indexes: number[]) => indexes.some((i) => categories[i]!.athletes > 0) && indexes.every((i) => isDone(i) || categories[i]!.athletes === 0);
   const goTo = (i: number) => setCategoryId(categories[i]!.category.id);
   const previous = categories[index - 1];

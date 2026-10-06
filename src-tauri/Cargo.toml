@@ -1,6 +1,6 @@
 [package]
 name = "ifbb-fitness-challenge"
-version = "0.5.0"
+version = "0.5.1"
 description = "IFBB Fitness Challenge — local competition manager"
 authors = ["IFBB"]
 edition = "2021"

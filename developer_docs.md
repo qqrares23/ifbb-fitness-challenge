@@ -136,8 +136,9 @@ src/
   keeps the file in the app **config** dir, e.g. `%APPDATA%\org.ifbb.fitnesschallenge\`);
 - registers `tauri-plugin-dialog` (native Save-As / Open) and `tauri-plugin-fs` (write the chosen file);
 - defines four commands for moving the database (`src/db/backup.ts` calls them):
-  - `export_database(destination)`: copies the database file (the app runs
-    `PRAGMA wal_checkpoint(TRUNCATE)` first, so the copy is complete);
+  - `prepare_export(destination)` / `finish_export(destination)`: the app runs `VACUUM INTO` on
+    `<destination>.partial` (a complete, consistent copy, whatever is in the write-ahead log or
+    being read on another pooled connection), then it is renamed over `destination`;
   - `import_database(source)`: checks the SQLite file header, copies the current database to
     `fitness-challenge.before-import.db`, removes stale `-wal`/`-shm` files and copies `source` in.
     The app closes its connection first (`closeDb`) and reloads after, which runs any migrations an
@@ -370,7 +371,7 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
   (details: draft only; setup = station sets, stations, categories, athletes: until finished;
   results: running), plus `canChangeCategory`. These mirror the triggers in §6.3.
 - **`readiness.ts`**: `competitionReadiness(setup)` → `{ blocking, warnings }`, shown in
-  `ReadinessCard`. **Start** is disabled while `blocking` is non-empty; once started, the card is
+  `ReadinessCard`. **Start** and **Finish** are disabled while `blocking` is non-empty; once started, the card is
   still shown ("Needs attention") while blocking problems exist, since the setup can still change.
   - Blocking (Fitness Challenge): no station set, a set without stations, a station without an
     exercise, a category without a set. Always: no entries, an entry that no longer meets its
