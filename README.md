@@ -7,6 +7,9 @@ official results as PDF or CSV. Two challenge types:
 - **Fitness Challenge** — reps at each station; most total reps wins.
 - **Speed Fit** — one time for the whole set of exercises; fastest wins.
 
+Categories can be for individuals, couples (2 athletes) or teams (4 athletes); a couple or team has
+one number and one result.
+
 Built with Tauri 2, React 19, TypeScript and SQLite. All data stays on the computer, in the app's
 data folder (`fitness-challenge.db`).
 

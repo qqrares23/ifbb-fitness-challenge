@@ -10,9 +10,9 @@ import {
   type Competition,
   type CompetitionStatus,
 } from "@/db/competitions";
-import { addEntries, deleteEntry, setEntryBib, setEntryCategory } from "@/db/entries";
+import { addEntries, addTeamEntry, deleteEntry, setEntryBib, setEntryCategory } from "@/db/entries";
 import { queryKeys } from "@/db/queryKeys";
-import { listResults } from "@/db/results";
+import { clearResults, listResults } from "@/db/results";
 import { setScore } from "@/db/scores";
 import { setTime } from "@/db/speedFitTimes";
 import { createStationSet, deleteStationSet, renameStationSet, setStationCount, setStationExercise } from "@/db/stations";
@@ -31,7 +31,8 @@ export function useCompetitionSetup(id: number) {
 }
 
 const STATUS_SUCCESS: Record<CompetitionStatus, string> = {
-  draft: "",
+  // Only reached by restarting.
+  draft: "Competition restarted: results deleted, setup kept.",
   // "running" is also reached by reopening a finished competition.
   running: "Rep entry is open.",
   finished: "Competition finished.",
@@ -42,6 +43,7 @@ export function useCompetitionMutations() {
     create: useDbMutation(createCompetition, { invalidates, success: "Competition created." }),
     update: useDbMutation(updateCompetition, { invalidates, success: "Competition details saved." }),
     remove: useDbMutation(deleteCompetition, { invalidates, success: "Competition deleted." }),
+    clearResults: useDbMutation(clearResults, { invalidates, success: "All results deleted." }),
     setStatus: useDbMutation(
       ({ id, status }: { id: number; status: CompetitionStatus }) => setCompetitionStatus(id, status),
       { invalidates, success: ({ status }) => STATUS_SUCCESS[status] },
@@ -87,8 +89,9 @@ export function useEntryMutations() {
       invalidates,
       success: ({ athleteIds }) => `${athleteIds.length} athlete${athleteIds.length === 1 ? "" : "s"} entered.`,
     }),
+    addTeam: useDbMutation(addTeamEntry, { invalidates, success: ({ size }) => `${size === 2 ? "Couple" : "Team"} entered.` }),
     setCategory: useDbMutation(setEntryCategory, { invalidates }),
     setBib: useDbMutation(setEntryBib, { invalidates }),
-    remove: useDbMutation(deleteEntry, { invalidates, success: "Athlete removed from the competition." }),
+    remove: useDbMutation(deleteEntry, { invalidates, success: "Removed from the competition." }),
   };
 }

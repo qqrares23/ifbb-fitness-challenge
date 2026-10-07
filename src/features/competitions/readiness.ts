@@ -1,12 +1,28 @@
+import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
-import { eligibilityProblems } from "@/engine";
-import { fullName } from "@/lib/labels";
+import type { Entry } from "@/db/entries";
+import { eligibilityProblems, FORMAT_SIZE, type IsoDate } from "@/engine";
+import { entryFullName, fullName } from "@/lib/labels";
 
 export interface Readiness {
   /** Must all be fixed before the competition can start. */
   blocking: string[];
   /** Worth a look, but don't prevent starting. */
   warnings: string[];
+}
+
+/**
+ * Why an entry doesn't fit its category: a couple or team without its number of athletes, or an
+ * athlete outside the sex and age rules (named, in a couple or team). Empty = fits.
+ */
+export function entryProblems(entry: Entry, category: Category, date: IsoDate): string[] {
+  const size = FORMAT_SIZE[category.format];
+  const problems = entry.members.length === size ? [] : [`A ${category.format} has ${size} athletes; this one has ${entry.members.length}.`];
+  for (const member of entry.members) {
+    const memberProblems = eligibilityProblems(member, category, date);
+    problems.push(...(entry.team ? memberProblems.map((p) => `${fullName(member)}: ${p}`) : memberProblems));
+  }
+  return problems;
 }
 
 export function competitionReadiness({ competition, stationSets, categories, entries }: CompetitionSetup): Readiness {
@@ -46,8 +62,8 @@ export function competitionReadiness({ competition, stationSets, categories, ent
   for (const entry of entries) {
     const category = categoryById.get(entry.categoryId);
     if (!category) continue;
-    if (eligibilityProblems(entry, category, competition.date).length > 0) {
-      blocking.push(`#${entry.bibNumber} ${fullName(entry)} doesn't meet the rules of "${category.name}".`);
+    if (entryProblems(entry, category, competition.date).length > 0) {
+      blocking.push(`#${entry.bibNumber} ${entryFullName(entry)} doesn't meet the rules of "${category.name}".`);
     }
   }
 

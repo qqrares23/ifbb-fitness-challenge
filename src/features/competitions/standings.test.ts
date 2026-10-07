@@ -5,12 +5,12 @@ import { competitionResults, entriesWithResults } from "./standings";
 
 describe("groupBySubgroup", () => {
   it("groups levels under their sub-group in order, keeping pre-hierarchy categories on their own", () => {
-    const junior = { ...({ ageGroup: "Junior", gender: "male", minAge: 14, maxAge: 23 } as const), stationSetIds: [] as number[] };
+    const junior = { ...({ format: "individual", ageGroup: "Junior", gender: "male", minAge: 14, maxAge: 23, federation: null } as const), stationSetIds: [] as number[] };
     const groups = groupBySubgroup([
       { ...junior, id: 1, name: "Junior Men 14–23 · Bronze", level: "Bronze" },
       { ...junior, id: 2, name: "Junior Women 16–23 · Bronze", level: "Bronze", gender: "female", minAge: 16 },
       { ...junior, id: 3, name: "Junior Men 14–23 · Gold", level: "Gold" },
-      { id: 4, name: "Open", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", stationSetIds: [] },
+      { id: 4, name: "Open", format: "individual", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [] },
     ]);
     expect(groups.map((g) => [g.label, g.categoryIndexes])).toEqual([
       ["Junior Men 14–23", [0, 2]],
@@ -20,7 +20,7 @@ describe("groupBySubgroup", () => {
   });
 });
 
-const athlete = { firstName: "A", lastName: "B", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", club: "", lateEntry: false } as const;
+const athlete = { firstName: "A", lastName: "B", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", club: "", lateEntry: false, team: false } as const;
 
 const setup: CompetitionSetup = {
   competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "running" },
@@ -29,12 +29,12 @@ const setup: CompetitionSetup = {
     { id: 2, name: "Set B", stations: [{ stationNumber: 1, exerciseId: 3, exerciseName: "Sit-ups" }] },
   ],
   categories: [
-    { id: 10, name: "Men", gender: "male", minAge: null, maxAge: null, ageGroup: "", level: "", stationSetIds: [1] },
-    { id: 11, name: "Empty", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", stationSetIds: [1] },
+    { id: 10, name: "Men", format: "individual", gender: "male", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [1] },
+    { id: 11, name: "Empty", format: "individual", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [1] },
   ],
   entries: [
-    { ...athlete, id: 102, athleteId: 2, categoryId: 10, bibNumber: 7 },
-    { ...athlete, id: 101, athleteId: 1, categoryId: 10, bibNumber: 3 },
+    { ...athlete, id: 102, athleteId: 2, categoryId: 10, bibNumber: 7, members: [] },
+    { ...athlete, id: 101, athleteId: 1, categoryId: 10, bibNumber: 3, members: [] },
   ],
 };
 

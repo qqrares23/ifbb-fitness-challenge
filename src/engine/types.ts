@@ -3,10 +3,15 @@
 export type Sex = "male" | "female";
 export type CategoryGender = Sex | "mixed";
 
+/** Who competes as one entry: one athlete, a couple (2) or a team (4). */
+export type CategoryFormat = "individual" | "couple" | "team";
+
 /** ISO calendar date, "YYYY-MM-DD". */
 export type IsoDate = string;
 
 export interface CategoryRules {
+  format: CategoryFormat;
+  /** Every athlete of a couple or team must meet it; "mixed" allows any. */
   gender: CategoryGender;
   /** Inclusive; null = no lower bound. */
   minAge: number | null;

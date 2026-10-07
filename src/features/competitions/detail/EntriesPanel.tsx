@@ -12,10 +12,11 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import type { Category } from "@/db/categories";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { Entry } from "@/db/entries";
-import { ageOn, eligibilityProblems } from "@/engine";
-import { describeCategoryRules, fullName, listName } from "@/lib/labels";
+import { ageOn } from "@/engine";
+import { describeCategoryRules, entryFullName, listName } from "@/lib/labels";
 import { LateEntryBadge } from "../CompetitionBadges";
 import { canChangeCategory, type CompetitionPermissions } from "../permissions";
+import { entryProblems } from "../readiness";
 import { useEntryMutations } from "../useCompetitions";
 import { AddEntriesDialog } from "./AddEntriesDialog";
 
@@ -75,10 +76,10 @@ export function EntriesPanel({ setup, permissions, entryIdsWithResults }: Entrie
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
-        title="Remove athlete?"
+        title={removing?.team ? "Remove from the competition?" : "Remove athlete?"}
         description={
           removing
-            ? `#${removing.bibNumber} ${fullName(removing)} will be taken out of "${categories.find((c) => c.id === removing.categoryId)?.name}"` +
+            ? `#${removing.bibNumber} ${entryFullName(removing)} will be taken out of "${categories.find((c) => c.id === removing.categoryId)?.name}"` +
               (entryIdsWithResults.has(removing.id) ? ", and the results already recorded there will be deleted." : ".") +
               " Their other categories are not affected."
             : ""
@@ -104,24 +105,26 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
   const { setCategory } = useEntryMutations();
   const date = setup.competition.date;
   const editable = permissions.editSetup;
+  const noun = { individual: "athlete", couple: "couple", team: "team" }[category.format];
 
   return (
     <section>
       <h3 className="mb-2 flex items-baseline gap-2">
         <span className="font-semibold">{category.name}</span>
         <span className="text-xs text-muted-foreground">
-          {describeCategoryRules(category)} · {entries.length} athlete{entries.length === 1 ? "" : "s"}
+          {describeCategoryRules(category)} · {entries.length} {noun}
+          {entries.length === 1 ? "" : "s"}
         </span>
       </h3>
       {entries.length === 0 ? (
-        <p className="rounded-xl border border-dashed bg-card p-4 text-sm text-muted-foreground">No athletes in this category.</p>
+        <p className="rounded-xl border border-dashed bg-card p-4 text-sm text-muted-foreground">No {noun}s in this category.</p>
       ) : (
         <div className="surface">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-24 pl-4">Nr</TableHead>
-                <TableHead>Athlete</TableHead>
+                <TableHead>{category.format === "individual" ? "Athlete" : "Athletes"}</TableHead>
                 <TableHead className="text-right">Age</TableHead>
                 <TableHead>Country</TableHead>
                 {editable && <TableHead className="w-56">Category</TableHead>}
@@ -130,7 +133,7 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
             </TableHeader>
             <TableBody>
               {entries.map((entry) => {
-                const problems = eligibilityProblems(entry, category, date);
+                const problems = entryProblems(entry, category, date);
                 const movable = canChangeCategory(permissions, entryIdsWithResults.has(entry.id));
                 return (
                   <TableRow key={entry.id}>
@@ -138,16 +141,28 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
                       {editable ? <BibInput entry={entry} /> : <span className="font-semibold tabular-nums">{entry.bibNumber}</span>}
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">
-                        {listName(entry)}
-                      </span>
+                      {entry.members.map((member) => (
+                        <span key={member.athleteId} className="block font-medium">
+                          {listName(member)}
+                        </span>
+                      ))}
                       {entry.lateEntry && <LateEntryBadge />}
                       {problems.length > 0 && <span className="block text-xs text-destructive">{problems.join(" ")}</span>}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{ageOn(entry.dateOfBirth, date)}</TableCell>
-                    <TableCell>
-                      <CountryLabel code={entry.country} />
-                      {entry.club && <span className="block text-xs text-muted-foreground">{entry.club}</span>}
+                    <TableCell className="text-right align-top tabular-nums">
+                      {entry.members.map((member) => (
+                        <span key={member.athleteId} className="block">
+                          {ageOn(member.dateOfBirth, date)}
+                        </span>
+                      ))}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      {entry.members.map((member) => (
+                        <span key={member.athleteId} className="block">
+                          <CountryLabel code={member.country} />
+                          {member.club && <span className="block text-xs text-muted-foreground">{member.club}</span>}
+                        </span>
+                      ))}
                     </TableCell>
                     {editable && (
                       <TableCell title={movable ? undefined : "Has results already — the category can't change."}>
@@ -160,7 +175,8 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {setup.categories.map((c) => (
+                            {/* A couple or team only moves to another couple or team category (0013). */}
+                            {setup.categories.filter((c) => c.format === category.format).map((c) => (
                               <SelectItem key={c.id} value={c.id.toString()}>
                                 {c.name}
                               </SelectItem>
@@ -171,7 +187,7 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
                     )}
                     {editable && (
                       <TableCell className="pr-4">
-                        <Button variant="ghost" size="icon" aria-label="Remove athlete" onClick={() => onRemove(entry)}>
+                        <Button variant="ghost" size="icon" aria-label={entry.team ? "Remove" : "Remove athlete"} onClick={() => onRemove(entry)}>
                           <Trash2 className="text-destructive" />
                         </Button>
                       </TableCell>

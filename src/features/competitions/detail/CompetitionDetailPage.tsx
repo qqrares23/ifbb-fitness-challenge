@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { SearchX, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { SearchX } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeftIcon } from "@/components/icons/arrow-left";
 import { CircleCheckIcon } from "@/components/icons/circle-check";
 import { PlayIcon } from "@/components/icons/play";
+import { RefreshCCWIcon } from "@/components/icons/refresh-ccw";
 import { RotateCCWIcon } from "@/components/icons/rotate-ccw";
 import { SquarePenIcon } from "@/components/icons/square-pen";
+import { Trash2Icon } from "@/components/icons/trash-2";
 import { useIconAnimation } from "@/components/icons/animated";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
@@ -50,7 +51,7 @@ export function CompetitionDetailPage() {
   );
 }
 
-type PendingAction = "start" | "finish" | "reopen" | "delete" | null;
+type PendingAction = "start" | "finish" | "reopen" | "restart" | "clearResults" | "delete" | null;
 
 function CompetitionDetail({ setup }: { setup: CompetitionSetup }) {
   const locked = setup.competition.status !== "draft";
@@ -84,7 +85,7 @@ interface CompetitionViewProps {
 function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionViewProps) {
   const navigate = useNavigate();
   const { competition, stationSets, categories, entries } = setup;
-  const { setStatus, remove } = useCompetitionMutations();
+  const { setStatus, clearResults, remove } = useCompetitionMutations();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const locked = competition.status !== "draft";
@@ -102,9 +103,17 @@ function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionVie
           Edit
         </AnimatedButton>
       )}
-      <Button variant="outline" aria-label="Delete competition" onClick={() => setPending("delete")}>
-        <Trash2 className="text-destructive" />
-      </Button>
+      <AnimatedButton icon={Trash2Icon} iconClassName="text-destructive" variant="outline" aria-label="Delete competition" onClick={() => setPending("delete")} />
+      {permissions.clearResults && (
+        <AnimatedButton icon={Trash2Icon} iconClassName="text-destructive" variant="outline" onClick={() => setPending("clearResults")}>
+          Delete results
+        </AnimatedButton>
+      )}
+      {permissions.restart && (
+        <AnimatedButton icon={RefreshCCWIcon} variant="outline" onClick={() => setPending("restart")}>
+          Restart
+        </AnimatedButton>
+      )}
       {!locked && (
         <AnimatedButton icon={PlayIcon} disabled={readiness.blocking.length > 0} onClick={() => setPending("start")}>
           Start competition
@@ -152,7 +161,7 @@ function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionVie
             </TabsTrigger>
           )}
           <TabsTrigger value="categories">Categories ({categories.length})</TabsTrigger>
-          <TabsTrigger value="athletes">Athletes ({new Set(entries.map((e) => e.athleteId)).size})</TabsTrigger>
+          <TabsTrigger value="athletes">Athletes ({new Set(entries.flatMap((e) => e.members.map((m) => m.athleteId))).size})</TabsTrigger>
         </TabsList>
         {locked && results && (
           <TabsContent value="results">
@@ -196,6 +205,24 @@ function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionVie
         description={`Entry opens again so ${resultNoun}s can be corrected, and the setup can be changed again.`}
         confirmLabel="Reopen"
         onConfirm={() => setStatus.mutate({ id: competition.id, status: "running" })}
+      />
+      <ConfirmDialog
+        open={pending === "clearResults"}
+        onOpenChange={(open) => !open && setPending(null)}
+        title="Delete all results?"
+        description={`Every ${resultNoun} recorded in this competition is deleted, e.g. after a trial run. The competition keeps running, with its stations, categories and athletes.`}
+        confirmLabel="Delete results"
+        destructive
+        onConfirm={() => clearResults.mutate(competition)}
+      />
+      <ConfirmDialog
+        open={pending === "restart"}
+        onOpenChange={(open) => !open && setPending(null)}
+        title="Restart the competition?"
+        description={`Every ${resultNoun} recorded is deleted and late-entry marks are cleared. ${speedFit ? "Categories" : "Stations, categories"} and athletes are kept. The competition goes back to setup, so it has to be started again.`}
+        confirmLabel="Restart"
+        destructive
+        onConfirm={() => setStatus.mutate({ id: competition.id, status: "draft" })}
       />
       <ConfirmDialog
         open={pending === "delete"}

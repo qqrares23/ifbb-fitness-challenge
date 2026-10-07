@@ -2,7 +2,7 @@ import type { Category } from "@/db/categories";
 import type { Entry } from "@/db/entries";
 import type { Station } from "@/db/stations";
 import { formatDuration } from "@/engine";
-import { fullName } from "@/lib/labels";
+import { entryClubs, entryCountries, entryFullName } from "@/lib/labels";
 import type { CompetitionResults } from "@/features/competitions/standings";
 
 export interface TableFormat {
@@ -20,12 +20,18 @@ export interface CategoryTable {
   body: string[][];
 }
 
-/** Nr Crt | Athlete Name | Country, plus Club when anyone in the category has one. */
-function athleteColumns(entries: readonly Entry[]) {
-  const withClub = entries.some((e) => e.club);
+const NAME_HEADERS = { individual: "Athlete Name", couple: "Couple", team: "Team" } as const;
+
+/**
+ * Nr Crt | Athlete Name (or Couple / Team) | Country, plus Club when anyone in the category has
+ * one, except in IFBB Fitness Challenge categories, which only show the country.
+ */
+function athleteColumns(results: CompetitionResults, category: Category, entries: readonly Entry[]) {
+  const ifbbFitnessChallenge = results.kind === "fitness_challenge" && category.federation === "ifbb";
+  const withClub = !ifbbFitnessChallenge && entries.some((e) => entryClubs(e));
   return {
-    head: ["Nr Crt", "Athlete Name", "Country", ...(withClub ? ["Club"] : [])],
-    cells: (entry: Entry, index: number) => [String(index + 1), fullName(entry), entry.country, ...(withClub ? [entry.club] : [])],
+    head: ["Nr Crt", NAME_HEADERS[category.format], "Country", ...(withClub ? ["Club"] : [])],
+    cells: (entry: Entry, index: number) => [String(index + 1), entryFullName(entry), entryCountries(entry), ...(withClub ? [entryClubs(entry)] : [])],
   };
 }
 
@@ -33,6 +39,7 @@ const orMissing = (value: string | null, format: TableFormat) => value ?? format
 
 /**
  * The results tables every export uses, one per category, rows in ranking order:
+ * (Athlete Name reads Couple / Team in those categories.)
  *   Fitness Challenge: Nr Crt | Athlete Name | Country | [Club] | <reps per station of its set…> | Total | Placement
  *     (one per station set; with several sets also "Overall": <total per set…> | Total | Placement)
  *   Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
@@ -40,7 +47,7 @@ const orMissing = (value: string | null, format: TableFormat) => value ?? format
 export function resultsTables(results: CompetitionResults, format: TableFormat): CategoryTable[] {
   if (results.kind === "speed_fit") {
     return results.categories.map(({ category, rows }) => {
-      const athlete = athleteColumns(rows.map((r) => r.entry));
+      const athlete = athleteColumns(results, category, rows.map((r) => r.entry));
       return {
         category,
         part: null,
@@ -55,7 +62,7 @@ export function resultsTables(results: CompetitionResults, format: TableFormat):
   }
   // Fitness Challenge: a table per station set, plus an overall one when the category uses several.
   return results.categories.flatMap(({ category, sets, overall, rows }) => {
-    const athlete = athleteColumns(rows.map((r) => r.entry));
+    const athlete = athleteColumns(results, category, rows.map((r) => r.entry));
     const table = (part: string | null, columns: { header: string; key: number }[], ranked: typeof rows): CategoryTable => ({
       category,
       part,

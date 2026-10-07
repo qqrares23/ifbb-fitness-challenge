@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { StationSet } from "@/db/stations";
-import { competitionReadiness } from "./readiness";
+import { competitionReadiness, entryProblems } from "./readiness";
 
 const setA: StationSet = {
   id: 1,
@@ -12,12 +12,14 @@ const setA: StationSet = {
   ],
 };
 
+const ion = { athleteId: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU", club: "" } as const;
+
 const ready: CompetitionSetup = {
   competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "draft" },
   stationSets: [setA],
-  categories: [{ id: 10, name: "Juniors", gender: "male", minAge: 16, maxAge: 20, ageGroup: "", level: "", stationSetIds: [1] }],
+  categories: [{ id: 10, name: "Juniors", format: "individual", gender: "male", minAge: 16, maxAge: 20, ageGroup: "", level: "", federation: null, stationSetIds: [1] }],
   entries: [
-    { id: 100, athleteId: 1, categoryId: 10, bibNumber: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU", club: "", lateEntry: false },
+    { id: 100, categoryId: 10, bibNumber: 1, lateEntry: false, team: false, ...ion, members: [ion] },
   ],
 };
 
@@ -53,11 +55,24 @@ describe("competitionReadiness", () => {
     expect(competitionReadiness({ ...ready, categories }).blocking).toHaveLength(1);
   });
 
+  it("checks a couple / team: its number of athletes, and each athlete against the rules", () => {
+    const ana = { ...ion, athleteId: 2, firstName: "Ana", sex: "female" } as const;
+    const couples = [{ ...ready.categories[0]!, format: "couple" as const, gender: "mixed" as const }];
+    expect(entryProblems({ ...ready.entries[0]!, team: true, members: [ion, ana] }, couples[0]!, "2026-10-01")).toEqual([]);
+    expect(entryProblems({ ...ready.entries[0]!, team: true, members: [ion] }, couples[0]!, "2026-10-01")).toEqual([
+      "A couple has 2 athletes; this one has 1.",
+    ]);
+    const menCouples = { ...couples[0]!, gender: "male" as const };
+    expect(entryProblems({ ...ready.entries[0]!, team: true, members: [ion, ana] }, menCouples, "2026-10-01")).toEqual([
+      "Ana Pop: Category is for male athletes only.",
+    ]);
+  });
+
   it("warns about empty categories and a repeated exercise", () => {
     const { blocking, warnings } = competitionReadiness({
       ...ready,
       stationSets: [{ ...setA, stations: [...setA.stations, { stationNumber: 3, exerciseId: 1, exerciseName: "Push-ups" }] }],
-      categories: [...ready.categories, { id: 11, name: "Masters", gender: "mixed", minAge: 40, maxAge: null, ageGroup: "", level: "", stationSetIds: [1] }],
+      categories: [...ready.categories, { id: 11, name: "Masters", format: "individual", gender: "mixed", minAge: 40, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [1] }],
     });
     expect(blocking).toEqual([]);
     expect(warnings).toEqual(['"Push-ups" is used at stations 1, 3.', '"Masters" has no athletes.']);

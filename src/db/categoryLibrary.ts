@@ -15,7 +15,8 @@ import { withConstraintMessages } from "./errors";
 /**
  * Age group (Junior, Senior…) → sub-groups by sex and age → levels (Bronze, Silver…).
  * Each federation (IFBB, Romania) has a library per challenge type (Fitness Challenge, Speed Fit).
- * A sub-group with no levels is a category on its own (common for Speed Fit).
+ * A sub-group with no levels is a category on its own (common for Speed Fit). A sub-group is for
+ * individuals, couples or teams.
  */
 export interface AgeGroup {
   id: number;
@@ -41,7 +42,7 @@ export async function listCategoryLibrary({ federation, kind }: LibraryKey): Pro
   const [groups, subgroups, levels] = await Promise.all([
     conn.select<Omit<AgeGroup, "subgroups">[]>("SELECT id, name FROM age_groups WHERE federation = $1 AND kind = $2 ORDER BY id", [federation, kind]),
     conn.select<Omit<AgeSubgroup, "levels">[]>(
-      "SELECT id, age_group_id AS ageGroupId, gender, min_age AS minAge, max_age AS maxAge FROM age_subgroups ORDER BY id",
+      "SELECT id, age_group_id AS ageGroupId, format, gender, min_age AS minAge, max_age AS maxAge FROM age_subgroups ORDER BY id",
     ),
     conn.select<CategoryLevel[]>("SELECT id, subgroup_id AS subgroupId, name FROM category_levels ORDER BY id"),
   ]);
@@ -76,18 +77,18 @@ export async function deleteAgeGroup(id: number): Promise<void> {
   await (await db()).execute("DELETE FROM age_groups WHERE id = $1", [id]);
 }
 
-const duplicateSubgroup = { unique: "This age group already has a sub-group with that sex and ages." };
+const duplicateSubgroup = { unique: "This age group already has a sub-group with that type, sex and ages." };
 
-export async function createSubgroup({ ageGroupId, gender, minAge, maxAge }: CategoryRules & { ageGroupId: number }): Promise<void> {
+export async function createSubgroup({ ageGroupId, format, gender, minAge, maxAge }: CategoryRules & { ageGroupId: number }): Promise<void> {
   await withConstraintMessages(
-    (await db()).execute("INSERT INTO age_subgroups (age_group_id, gender, min_age, max_age) VALUES ($1, $2, $3, $4)", [ageGroupId, gender, minAge, maxAge]),
+    (await db()).execute("INSERT INTO age_subgroups (age_group_id, format, gender, min_age, max_age) VALUES ($1, $2, $3, $4, $5)", [ageGroupId, format, gender, minAge, maxAge]),
     duplicateSubgroup,
   );
 }
 
-export async function updateSubgroup({ id, gender, minAge, maxAge }: CategoryRules & { id: number }): Promise<void> {
+export async function updateSubgroup({ id, format, gender, minAge, maxAge }: CategoryRules & { id: number }): Promise<void> {
   await withConstraintMessages(
-    (await db()).execute("UPDATE age_subgroups SET gender = $1, min_age = $2, max_age = $3 WHERE id = $4", [gender, minAge, maxAge, id]),
+    (await db()).execute("UPDATE age_subgroups SET format = $1, gender = $2, min_age = $3, max_age = $4 WHERE id = $5", [format, gender, minAge, maxAge, id]),
     duplicateSubgroup,
   );
 }

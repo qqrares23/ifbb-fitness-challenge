@@ -1,4 +1,5 @@
 import type { CategoryRules } from "@/engine";
+import type { Federation } from "./categoryLibrary";
 import { categoryName, subgroupName } from "@/lib/labels";
 import { db } from "./client";
 import { withConstraintMessages } from "./errors";
@@ -11,6 +12,8 @@ export interface Category extends CategoryRules {
   ageGroup: string;
   /** e.g. "Gold"; empty for a sub-group without levels, and for categories created before the hierarchy. */
   level: string;
+  /** The library it was copied from; null when unknown (copied before 0013 from an ambiguous age group). */
+  federation: Federation | null;
   /**
    * The station sets it is scored on (Fitness Challenge), in set order: each is ranked on its own,
    * plus an overall ranking when there are several. Empty = none picked yet / Speed Fit.
@@ -33,7 +36,7 @@ export function groupBySubgroup(categories: readonly Category[]): SubgroupCatego
   const groups = new Map<string, SubgroupCategories>();
   categories.forEach((category, index) => {
     const key = category.ageGroup
-      ? JSON.stringify([category.ageGroup, category.gender, category.minAge, category.maxAge])
+      ? JSON.stringify([category.ageGroup, category.format, category.gender, category.minAge, category.maxAge])
       : `name:${category.name}`;
     let group = groups.get(key);
     if (!group) {
@@ -52,7 +55,7 @@ export function groupBySubgroup(categories: readonly Category[]): SubgroupCatego
  */
 export async function listCategories(competitionId: number): Promise<Category[]> {
   const raw = await (await db()).select<(Omit<Category, "stationSetIds"> & { stationSetIds: string })[]>(
-    `SELECT id, name, gender, min_age AS minAge, max_age AS maxAge, age_group AS ageGroup, level,
+    `SELECT id, name, format, gender, min_age AS minAge, max_age AS maxAge, age_group AS ageGroup, level, federation,
             (SELECT json_group_array(set_id) FROM (SELECT set_id FROM category_station_sets WHERE category_id = c.id ORDER BY set_id)) AS stationSetIds
      FROM categories c WHERE competition_id = $1
      ORDER BY id`,
@@ -63,7 +66,7 @@ export async function listCategories(competitionId: number): Promise<Category[]>
   return groupBySubgroup(named).flatMap((group) => group.categoryIndexes.map((i) => named[i]!));
 }
 
-type LibraryLevel = CategoryRules & { ageGroup: string; level: string };
+type LibraryLevel = CategoryRules & { ageGroup: string; level: string; federation: Federation };
 
 /**
  * Copies the chosen library levels, and sub-groups without levels, into a competition (a snapshot:
@@ -73,13 +76,14 @@ type LibraryLevel = CategoryRules & { ageGroup: string; level: string };
 export async function addCategoriesFromLibrary(args: { competitionId: number; levelIds: number[]; subgroupIds: number[] }): Promise<void> {
   const conn = await db();
   const levels = await conn.select<LibraryLevel[]>(
-    `SELECT g.id AS groupId, s.id AS subgroupId, l.id AS levelId, g.name AS ageGroup, s.gender, s.min_age AS minAge, s.max_age AS maxAge, l.name AS level
+    `SELECT g.id AS groupId, s.id AS subgroupId, l.id AS levelId, g.name AS ageGroup, s.format, s.gender, s.min_age AS minAge, s.max_age AS maxAge,
+            l.name AS level, g.federation
      FROM category_levels l
      JOIN age_subgroups s ON s.id = l.subgroup_id
      JOIN age_groups g ON g.id = s.age_group_id
      WHERE l.id IN (SELECT value FROM json_each($1))
      UNION ALL
-     SELECT g.id, s.id, 0, g.name, s.gender, s.min_age, s.max_age, ''
+     SELECT g.id, s.id, 0, g.name, s.format, s.gender, s.min_age, s.max_age, '', g.federation
      FROM age_subgroups s
      JOIN age_groups g ON g.id = s.age_group_id
      WHERE s.id IN (SELECT value FROM json_each($2))
@@ -88,11 +92,11 @@ export async function addCategoriesFromLibrary(args: { competitionId: number; le
   );
   if (levels.length === 0) return; // all deleted from the library meanwhile
 
-  const COLUMNS = 7;
+  const COLUMNS = 9;
   const rows = levels.map((_, row) => `(${Array.from({ length: COLUMNS }, (_, col) => `$${row * COLUMNS + col + 1}`).join(", ")})`);
-  const values = levels.flatMap((l) => [args.competitionId, categoryName(l.ageGroup, l, l.level), l.gender, l.minAge, l.maxAge, l.ageGroup, l.level]);
+  const values = levels.flatMap((l) => [args.competitionId, categoryName(l.ageGroup, l, l.level), l.format, l.gender, l.minAge, l.maxAge, l.ageGroup, l.level, l.federation]);
   await withConstraintMessages(
-    conn.execute(`INSERT INTO categories (competition_id, name, gender, min_age, max_age, age_group, level) VALUES ${rows.join(", ")}`, values),
+    conn.execute(`INSERT INTO categories (competition_id, name, format, gender, min_age, max_age, age_group, level, federation) VALUES ${rows.join(", ")}`, values),
     { unique: "This competition already has a category with one of those names. Nothing was added." },
   );
 }
@@ -108,11 +112,12 @@ export async function setCategoryUsesStationSet({ categoryId, setId, used }: { c
 }
 
 /**
- * Changes a competition category's sex and age rules. A category from the library is renamed to
- * match (its name includes the ages); one created before the hierarchy keeps its name.
+ * Changes a competition category's sex and age rules (not whether it is for individuals, couples
+ * or teams). A category from the library is renamed to match (its name includes the ages); one
+ * created before the hierarchy keeps its name.
  */
 export async function updateCategoryRules({ category, rules }: { category: Category; rules: CategoryRules }): Promise<void> {
-  const name = category.ageGroup ? categoryName(category.ageGroup, rules, category.level) : category.name;
+  const name = category.ageGroup ? categoryName(category.ageGroup, { ...rules, format: category.format }, category.level) : category.name;
   await withConstraintMessages(
     (await db()).execute("UPDATE categories SET name = $1, gender = $2, min_age = $3, max_age = $4 WHERE id = $5", [name, rules.gender, rules.minAge, rules.maxAge, category.id]),
     { unique: `This competition already has a category named "${name}".` },

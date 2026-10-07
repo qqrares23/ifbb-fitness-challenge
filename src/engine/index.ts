@@ -1,6 +1,6 @@
 export * from "./types";
 export { ageOn } from "./age";
-export { eligibilityProblems } from "./eligibility";
+export { eligibilityProblems, FORMAT_SIZE } from "./eligibility";
 export { assignPlaces } from "./places";
 export { rankCategory } from "./ranking";
 export { rankByTime } from "./speedFit";

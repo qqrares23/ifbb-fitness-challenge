@@ -88,12 +88,10 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
     });
   }
 
-  const generated = `Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`;
   const pageCount = doc.getNumberOfPages();
   for (let page = 1; page <= pageCount; page++) {
     doc.setPage(page);
     doc.setFont(PDF_FONT, "normal").setFontSize(8).setTextColor(MUTED);
-    doc.text(generated, MARGIN, pageHeight - 8);
     doc.text(`Page ${page} of ${pageCount}`, pageWidth - MARGIN, pageHeight - 8, { align: "right" });
   }
 

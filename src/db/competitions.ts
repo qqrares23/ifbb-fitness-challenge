@@ -52,7 +52,9 @@ export async function listCompetitions(): Promise<CompetitionSummary[]> {
        (SELECT COUNT(*) FROM station_sets t WHERE t.competition_id = c.id) AS setCount,
        (SELECT COUNT(*) FROM competition_stations s JOIN station_sets t ON t.id = s.set_id WHERE t.competition_id = c.id) AS stationCount,
        (SELECT COUNT(*) FROM categories k WHERE k.competition_id = c.id) AS categoryCount,
-       (SELECT COUNT(DISTINCT e.athlete_id) FROM entries e WHERE e.competition_id = c.id) AS entryCount
+       (SELECT COUNT(*) FROM (
+          SELECT e.athlete_id FROM entries e WHERE e.competition_id = c.id
+          UNION SELECT m.athlete_id FROM entry_members m JOIN entries e ON e.id = m.entry_id WHERE e.competition_id = c.id)) AS entryCount
      FROM competitions c
      ORDER BY date DESC, id DESC`,
   );
@@ -86,8 +88,15 @@ export async function deleteCompetition(id: number): Promise<void> {
   await (await db()).execute("DELETE FROM competitions WHERE id = $1", [id]);
 }
 
-/** Moves a competition to its next state; the allowed transitions are enforced by the database. */
+/**
+ * Moves a competition to its next state; the allowed transitions are enforced by the database.
+ * Back to draft is a restart: the database deletes its results (see 0013).
+ */
 export async function setCompetitionStatus(id: number, status: CompetitionStatus): Promise<void> {
-  const stamp = status === "running" ? ", started_at = COALESCE(started_at, datetime('now'))" : status === "finished" ? ", finished_at = datetime('now')" : "";
+  const stamp = {
+    draft: ", started_at = NULL, finished_at = NULL",
+    running: ", started_at = COALESCE(started_at, datetime('now'))",
+    finished: ", finished_at = datetime('now')",
+  }[status];
   await (await db()).execute(`UPDATE competitions SET status = $1${stamp} WHERE id = $2`, [status, id]);
 }

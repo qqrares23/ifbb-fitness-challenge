@@ -32,7 +32,7 @@ function CategoryRulesForm({ category, onDone }: { category: Category; onDone: (
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4" noValidate>
-      <AgeRulesFields values={values} errors={errors} set={set} />
+      <AgeRulesFields values={values} errors={errors} set={set} formatLocked />
       <p className="text-xs text-muted-foreground">
         Only this competition changes; the category library keeps its rules. Athletes who no longer fit are flagged in red.
       </p>

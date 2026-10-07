@@ -24,7 +24,7 @@ describe("ageOn", () => {
 });
 
 describe("eligibilityProblems", () => {
-  const juniorsMen: CategoryRules = { gender: "male", minAge: 16, maxAge: 20 };
+  const juniorsMen: CategoryRules = { format: "individual", gender: "male", minAge: 16, maxAge: 20 };
 
   it("accepts an athlete inside every bound, including the inclusive edges", () => {
     expect(eligibilityProblems({ sex: "male", dateOfBirth: "2010-12-31" }, juniorsMen, "2026-03-01")).toEqual([]);
@@ -42,7 +42,7 @@ describe("eligibilityProblems", () => {
   });
 
   it("lets anyone into a mixed, open category", () => {
-    const open: CategoryRules = { gender: "mixed", minAge: null, maxAge: null };
+    const open: CategoryRules = { format: "individual", gender: "mixed", minAge: null, maxAge: null };
     expect(eligibilityProblems({ sex: "female", dateOfBirth: "1950-01-01" }, open, "2026-03-01")).toEqual([]);
   });
 });

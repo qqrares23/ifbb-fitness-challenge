@@ -1,6 +1,6 @@
 # IFBB Fitness Challenge — Developer Documentation
 
-Version 0.6 · Tauri 2 · React 19 · TypeScript · SQLite
+Version 0.7 · Tauri 2 · React 19 · TypeScript · SQLite
 
 This document explains how the app is built and why, so that a new developer can change it safely.
 For a short user-facing overview see `README.md`.
@@ -13,13 +13,14 @@ A desktop app for running IFBB competitions **fully offline**. Organisers:
 
 1. maintain three libraries: **athletes** (with an optional club), **exercises** (with an optional photo) and
    **categories**: one library per federation (IFBB, Romania) and challenge type, each age group →
-   sub-group by sex and age → optional levels;
+   sub-group by type (individual, couple of 2, team of 4), sex and age → optional levels;
 2. create a **competition** of one of two challenge types:
    - **Fitness Challenge**: athletes do reps at the stations of their category's station set(s), and the most total reps wins
      (a category on several sets is ranked per set and overall);
    - **Speed Fit**: each athlete gets one time for the whole set of exercises, and the fastest wins;
 3. set it up (station sets, categories, entries with numbers), **start** it, record results live,
-   **finish** it, and **export** official results as PDF (with chosen logos) or CSV;
+   **finish** it, and **export** official results as PDF (with chosen logos) or CSV. A trial run's
+   results can be deleted, and **restart** takes the competition back to setup without its results;
 4. **export / import the whole database** to move everything to another computer.
 
 All data lives in one SQLite file (`fitness-challenge.db`) in the OS app-data folder for the
@@ -63,7 +64,7 @@ identifier `org.ifbb.fitnesschallenge`. There is no server, no network access an
 └────────┼───────────────────────────────────────────────────────────────────────┘
          │ IPC (@tauri-apps/plugin-sql, plugin-dialog, plugin-fs)
 ┌────────▼──────────────────────── Rust (src-tauri) ─────────────────────────────┐
-│  lib.rs: registers plugins + 12 SQL migrations + database transfer commands    │
+│  lib.rs: registers plugins + 13 SQL migrations + database transfer commands    │
 │  SQLite file: CHECK constraints, FKs, and TRIGGERS enforce the lifecycle rules │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -176,6 +177,7 @@ exercises ──┐ (RESTRICT)│
 competitions ─┬─< station_sets ─< competition_stations (set_id, station_number) → exercise_id?
    kind       ├─< categories (copied from the library) ─< category_station_sets >─ station_sets
    status     └─< entries (athlete, category, bib, late_entry)
+                     ├─< entry_members (athlete, position)                      [couple / team]
                      ├─< scores (entry_id, set_id, station_number → station)   [fitness_challenge]
                      └─  speed_fit_times (entry_id PK, time_ms)                 [speed_fit]
 
@@ -187,14 +189,15 @@ age_groups ─< age_subgroups (sex, ages) ─< category_levels   (library; copie
 | `athletes` | `first_name`, `last_name` (non-blank), `date_of_birth` ISO date (`date(x) IS x`), `sex` ∈ male/female, `country` 3 upper-case letters, `club` (optional, free text) |
 | `exercises` | `name` UNIQUE NOCASE, `photo` (image data URL, resized by the app; optional). `description` is no longer shown |
 | `age_groups` | `federation` ∈ ifbb/romania, `kind` ∈ fitness_challenge/speed_fit (one library per pair), `name` (Junior, Senior, Masters…), UNIQUE (`federation`, `kind`, `name`) NOCASE |
-| `age_subgroups` | `age_group_id` (CASCADE), `gender` ∈ male/female/mixed, `min_age`/`max_age` 0–120 or NULL, min ≤ max. Unique per age group + sex + ages (NULL = NULL) |
+| `age_subgroups` | `age_group_id` (CASCADE), `format` ∈ individual/couple/team, `gender` ∈ male/female/mixed, `min_age`/`max_age` 0–120 or NULL, min ≤ max. Unique per age group + format + sex + ages (NULL = NULL) |
 | `category_levels` | `subgroup_id` (CASCADE), `name`, UNIQUE (`subgroup_id`, `name`) NOCASE |
 | `competitions` | `name`, `date`, `location`, `status` ∈ draft/running/finished, `kind` ∈ fitness_challenge/speed_fit, `started_at`, `finished_at` |
 | `station_sets` | `competition_id` (CASCADE), `name` ("Set A"…), UNIQUE per competition NOCASE. Fitness Challenge only; a new Fitness Challenge competition gets "Set A" (trigger) |
 | `competition_stations` | PK (`set_id`, `station_number`), `exercise_id` nullable until picked |
-| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules, `age_group`, `level` (both empty for pre-0006 categories). (`station_set_id` is unused since 0012.) UNIQUE (`competition_id`, `name`) |
+| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules (`format` can never change, trigger), `age_group`, `level` (both empty for pre-0006 categories), `federation` of the library it came from (NULL when unknown). (`station_set_id` is unused since 0012.) UNIQUE (`competition_id`, `name`) |
 | `category_station_sets` | PK (`category_id`, `set_id`), both CASCADE: the station sets a category is scored on. A new category gets the competition's first set (trigger); editable until finished |
-| `entries` | one row per athlete **per category** (an athlete can enter several levels): UNIQUE (`category_id`, `athlete_id`). One bib per athlete per competition, shared by all their entries and never used by another athlete (triggers). `late_entry` 0/1 |
+| `entries` | one row per athlete, couple or team **per category** (an athlete can enter several levels): UNIQUE (`category_id`, `athlete_id`); for a couple / team `athlete_id` is its first member. One bib per athlete per competition, shared by their individual entries; a couple / team has its own bib; no bib is shared otherwise (triggers). An entry only moves to a category of the same format. `late_entry` 0/1 |
+| `entry_members` | PK (`entry_id`, `athlete_id`), `position`: every athlete of a couple / team entry (only on those). At most 2 / 4 (trigger; the app enters exactly that many), and an athlete is in one couple / team per category |
 | `scores` | PK (`entry_id`, `set_id`, `station_number`), `reps` 0–9999. FK (`set_id`, `station_number`) → station, CASCADE: removing a station deletes its reps. Inserts only on a set the entry's category uses; reps on a set it stops using are kept (they come back if it is added again) |
 | `speed_fit_times` | PK `entry_id`, `time_ms` 1 … 86 399 999 |
 
@@ -226,17 +229,22 @@ register it in `lib.rs` with the next `version`.
 | 10 | `0010_station_sets.sql` | Station sets (stations and scores rebuilt per set, existing → "Set A"); stations, sets and categories editable until finished |
 | 11 | `0011_clubs_and_photos.sql` | `athletes.club`, `exercises.photo` |
 | 12 | `0012_category_multiple_sets.sql` | `category_station_sets`: several station sets per category |
+| 13 | `0013_teams_and_restart.sql` | Couples and teams (`format`, `entry_members`, bib triggers rebuilt), `categories.federation` (backfilled by age group name), restart (running/finished → draft deletes results and late marks) |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
 
 ```
           start                 finish
  draft ─────────► running ─────────────► finished
-                     ▲                      │
-                     └──────── reopen ──────┘
+   ▲                 ▲                      │
+   │                 └──────── reopen ──────┘
+   └──── restart (from running or finished) ┘
 ```
 
 Any other transition raises `That competition status change is not allowed.` `kind` can never change.
+Restart (`competitions_restart`, after the status is already draft so the result locks don't fire)
+deletes the competition's reps / times and clears `late_entry`; the setup stays. While running,
+**Delete results** (`clearResults`) deletes every rep / time and keeps running.
 
 | Action | draft | running | finished |
 |---|:-:|:-:|:-:|
@@ -246,7 +254,8 @@ Any other transition raises `That competition status change is not allowed.` `ki
 | Remove category (with its entries and results) | ✅ | ✅ | ❌ |
 | Add / remove entry, change bib | ✅ | ✅ (new entries get `late_entry = 1`) | ❌ |
 | Change entry category | ✅ | only while the entry has no results | ❌ |
-| Enter / clear reps or times | ❌ | ✅ | ❌ |
+| Enter / clear reps or times, delete all results | ❌ | ✅ | ❌ |
+| Restart (back to draft, results deleted) | ❌ | ✅ | ✅ |
 
 Further invariants:
 
@@ -372,15 +381,16 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 
 ### 7.6 Competition logic (`src/features/competitions/`)
 
-- **`permissions.ts`**: `competitionPermissions(status)` → `{ editDetails, editSetup, enterResults }`
+- **`permissions.ts`**: `competitionPermissions(status)` → `{ editDetails, editSetup, enterResults, clearResults, restart }`
   (details: draft only; setup = station sets, stations, categories, athletes: until finished;
-  results: running), plus `canChangeCategory`. These mirror the triggers in §6.3.
+  results and deleting them: running; restart: once started), plus `canChangeCategory`. These mirror the triggers in §6.3.
 - **`readiness.ts`**: `competitionReadiness(setup)` → `{ blocking, warnings }`, shown in
   `ReadinessCard`. **Start** and **Finish** are disabled while `blocking` is non-empty; once started, the card is
   still shown ("Needs attention") while blocking problems exist, since the setup can still change.
   - Blocking (Fitness Challenge): no station set, a set without stations, a station without an
     exercise, a category without a set. Always: no entries, an entry that no longer meets its
-    category's rules.
+    category's rules (`entryProblems`: a couple / team without 2 / 4 athletes, or any athlete outside
+    the sex and age rules).
   - Warnings: the same exercise twice in a set, a set no category uses, a category with no athletes.
 - **`standings.ts`**: the single ranking entry point.
   - `competitionResults(setup, recorded)` → per-category standings. A Fitness Challenge category has
@@ -399,6 +409,15 @@ ages, edited in `SubgroupFormDialog`) → level chips (named in `NameFormDialog`
 a sub-group without levels is added to a competition as one category (typical for Speed Fit, often
 sex-only with open ages); it has `age_group` set and `level` empty. Naming helpers live in `lib/labels.ts` (`subgroupName`, `categoryName`,
 `categoryTitle`).
+
+**Couples and teams**: a sub-group's type (`format`, edited with sex and ages in `AgeRulesFields`;
+fixed in a competition's copy) makes its categories couple (2) or team (4) categories, named e.g.
+"Senior Mixed Couple 18+ · Gold". Every member must meet the sex and age rules ("Mixed" allows any
+combination). `AddEntriesDialog` then takes exactly that many ticked athletes as one entry with one
+number (`addTeamEntry`: the entry, then its members; if the members are refused the entry is
+deleted again). `Entry.members` lists the athletes (an individual entry has itself as its only
+member), and `entryFullName` / `entryListName` / `entryCountries` / `entryClubs` (`lib/labels`) print
+them everywhere: entries table, results, PDF and CSV.
 
 **Athletes** have an optional club (free text; the form suggests clubs already used through a
 native `<datalist>`). **Exercises** have an optional photo (`lib/images.loadPhoto` scales it to
@@ -484,12 +503,13 @@ exportResults(format, setup, results, logos)
   │     Fitness Challenge: Nr Crt | Athlete Name | Country | [Club] | <stations of its set> | Total | Placement
   │       (a table per set; with several sets also "Overall": <total per set> | Total | Placement)
   │     Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
-  │     (Club only when someone in the category has one)
+  │     (Club only when someone in the category has one, and never in IFBB Fitness Challenge
+  │      categories; "Athlete Name" reads "Couple" / "Team" there, with "A / B" names and countries)
   ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a bold, centred header
   │                      (name, date · location, category) between the left and right logos (PdfLogoDialog: IFBB, another image or none on each side;
   │                      remembered in localStorage) naming the category once:
   │                      "<kind> — <categoryTitle> Official Results", then an autoTable,
-  │                      podium cell colours, "Generated …" and "Page x of y" footer.
+  │                      podium cell colours and a "Page x of y" footer.
   │                      Embeds Noto Sans (pdfAssets) so names like "Łukasz" or "Şahin" render.
   ├ csv.resultsCsv()     one sheet with a Category column; the header row is repeated (after a
   │                      blank line) where the station columns change. UTF-8 BOM, CRLF, RFC-4180 quoting,

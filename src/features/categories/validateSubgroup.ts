@@ -1,7 +1,8 @@
-import type { CategoryGender, CategoryRules } from "@/engine";
+import type { CategoryFormat, CategoryGender, CategoryRules } from "@/engine";
 
 /** The sub-group form keeps ages as text so a field can be left empty (= no limit). */
 export interface SubgroupFormValues {
+  format: CategoryFormat;
   gender: CategoryGender;
   minAge: string;
   maxAge: string;
@@ -31,5 +32,5 @@ export function validateSubgroup(form: SubgroupFormValues): SubgroupValidation {
   if (minAge != null && maxAge != null && minAge > maxAge) errors.maxAge = "Maximum age can't be below the minimum.";
 
   if (Object.keys(errors).length > 0 || minAge === undefined || maxAge === undefined) return { ok: false, errors };
-  return { ok: true, value: { gender: form.gender, minAge, maxAge } };
+  return { ok: true, value: { format: form.format, gender: form.gender, minAge, maxAge } };
 }

@@ -1,5 +1,8 @@
 import { ageOn } from "./age";
-import type { AthleteProfile, CategoryRules, IsoDate } from "./types";
+import type { AthleteProfile, CategoryFormat, CategoryRules, IsoDate } from "./types";
+
+/** Athletes per entry. */
+export const FORMAT_SIZE: Record<CategoryFormat, number> = { individual: 1, couple: 2, team: 4 };
 
 /**
  * Why an athlete may not enter a category on the competition date. An empty list means eligible.
@@ -7,7 +10,7 @@ import type { AthleteProfile, CategoryRules, IsoDate } from "./types";
  */
 export function eligibilityProblems(
   athlete: AthleteProfile,
-  category: CategoryRules,
+  category: Omit<CategoryRules, "format">,
   competitionDate: IsoDate,
 ): string[] {
   const problems: string[] = [];

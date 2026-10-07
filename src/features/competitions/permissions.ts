@@ -2,7 +2,7 @@ import type { CompetitionStatus } from "@/db/competitions";
 
 /**
  * What the screens offer in each competition state. The database triggers (migrations 0002,
- * 0005 and 0010) have the final say; this mirrors them so the UI never offers an action that
+ * 0005, 0010 and 0013) have the final say; this mirrors them so the UI never offers an action that
  * would fail.
  */
 export interface CompetitionPermissions {
@@ -11,6 +11,10 @@ export interface CompetitionPermissions {
   /** Station sets, stations, categories and athletes: until the competition is finished. */
   editSetup: boolean;
   enterResults: boolean;
+  /** Delete every result but keep running (e.g. after a trial run). */
+  clearResults: boolean;
+  /** Back to draft: results are deleted, the setup is kept (0013). */
+  restart: boolean;
 }
 
 export function competitionPermissions(status: CompetitionStatus): CompetitionPermissions {
@@ -18,6 +22,8 @@ export function competitionPermissions(status: CompetitionStatus): CompetitionPe
     editDetails: status === "draft",
     editSetup: status !== "finished",
     enterResults: status === "running",
+    clearResults: status === "running",
+    restart: status !== "draft",
   };
 }
 
