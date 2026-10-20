@@ -34,7 +34,7 @@ export async function listStationSets(competitionId: number): Promise<StationSet
 }
 
 /** "Set A", "Set B"… (then "Set 27"…): the first name not used yet. */
-export function nextSetName(existing: readonly string[]): string {
+function nextSetName(existing: readonly string[]): string {
   const taken = new Set(existing.map((name) => name.toLowerCase()));
   for (let i = 1; ; i++) {
     const name = `Set ${i <= 26 ? String.fromCharCode(64 + i) : i}`;

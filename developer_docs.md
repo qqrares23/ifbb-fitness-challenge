@@ -324,8 +324,9 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
     Later library edits never change a competition's rules.
   - **Status change** (`setCompetitionStatus`): stamps `started_at` (first start only) and `finished_at`.
 - `results.ts` returns a discriminated union `RecordedResults` (`scores` or `times`, depending on `kind`).
-- Inputs are validated on the JS side too (e.g. `MAX_REPS`, `MAX_STATIONS = 50`, `MAX_TIME_MS`), with
-  constants that mirror the SQL `CHECK`s.
+- Inputs are validated on the JS side too (e.g. `MAX_REPS`, `MAX_STATIONS = 50`, `MAX_TIME_MS`).
+  `MAX_REPS`, `MAX_TIME_MS` and the age bounds mirror SQL `CHECK`s (`consistency.test.ts` guards them);
+  `MAX_STATIONS` is a UI-only limit with no SQL backstop.
 
 ### 7.4 Caching and mutations
 
