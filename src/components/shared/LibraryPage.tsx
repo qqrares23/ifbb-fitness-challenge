@@ -8,7 +8,7 @@ import { ROW_ENTER, staggerStyle } from "@/lib/motion";
 import { filterBySearch } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { AnimatedButton } from "./AnimatedButton";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { useConfirm } from "./useConfirm";
 import { EmptyState } from "./EmptyState";
 import { QueryState } from "./QueryState";
 import { RowActions } from "./RowActions";
@@ -45,7 +45,7 @@ export function LibraryPage<T extends { id: number }>(props: LibraryPageProps<T>
   const [search, setSearch] = useState("");
   /** undefined = closed, null = adding a new record. */
   const [editing, setEditing] = useState<T | null | undefined>(undefined);
-  const [deleting, setDeleting] = useState<T | null>(null);
+  const { confirm, dialog } = useConfirm();
 
   const filtered = useMemo(() => filterBySearch(query.data ?? [], search, searchFields), [query.data, search, searchFields]);
 
@@ -90,7 +90,17 @@ export function LibraryPage<T extends { id: number }>(props: LibraryPageProps<T>
                             </TableCell>
                           ))}
                           <TableCell className="pr-4">
-                            <RowActions noun={noun} onEdit={() => setEditing(item)} onDelete={() => setDeleting(item)} />
+                            <RowActions
+                              noun={noun}
+                              onEdit={() => setEditing(item)}
+                              onDelete={() =>
+                                confirm({
+                                  title: `Delete ${noun}?`,
+                                  description: `"${props.itemName(item)}" will be removed permanently.${props.deleteNote ? ` ${props.deleteNote}` : ""}`,
+                                  run: () => props.onDelete(item),
+                                })
+                              }
+                            />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -107,15 +117,7 @@ export function LibraryPage<T extends { id: number }>(props: LibraryPageProps<T>
       </QueryState>
 
       {props.renderForm({ item: editing ?? null, open: editing !== undefined, onOpenChange: (open) => !open && setEditing(undefined) })}
-      <ConfirmDialog
-        open={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title={`Delete ${noun}?`}
-        description={deleting ? `"${props.itemName(deleting)}" will be removed permanently.${props.deleteNote ? ` ${props.deleteNote}` : ""}` : ""}
-        confirmLabel="Delete"
-        destructive
-        onConfirm={() => deleting && props.onDelete(deleting)}
-      />
+      {dialog}
     </>
   );
 }

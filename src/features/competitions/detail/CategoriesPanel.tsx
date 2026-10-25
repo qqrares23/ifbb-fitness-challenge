@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Tags, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Tags } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LayersIcon } from "@/components/icons/layers";
-import { SquarePenIcon } from "@/components/icons/square-pen";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
+import { RowActions } from "@/components/shared/RowActions";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { Category } from "@/db/categories";
@@ -120,12 +119,7 @@ export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: Cat
                     <TableCell className="text-right tabular-nums">{categoryEntries(category.id).length}</TableCell>
                     {editable && (
                       <TableCell className="pr-4">
-                        <div className="flex justify-end">
-                          <AnimatedButton icon={SquarePenIcon} variant="ghost" size="icon" aria-label={`Edit ${category.name}`} onClick={() => setEditing(category)} />
-                          <Button variant="ghost" size="icon" aria-label={`Remove ${category.name}`} onClick={() => setRemoving(category)}>
-                            <Trash2 className="text-destructive" />
-                          </Button>
-                        </div>
+                        <RowActions noun="category" onEdit={() => setEditing(category)} onDelete={() => setRemoving(category)} />
                       </TableCell>
                     )}
                   </TableRow>

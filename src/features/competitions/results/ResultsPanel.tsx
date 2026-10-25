@@ -164,15 +164,16 @@ function FitnessChallengeTables({ competitionId, standings, editable, part, onPa
     return <p className="rounded-xl border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">Pick a station set for this category in the Categories tab.</p>;
   }
   const overall = sets.length > 1 && part === "overall";
-  const set = sets[Math.min(Number(part) || 0, sets.length - 1)]!;
+  // Track the set by id, not position, so removing a set while viewing it doesn't desync the tab.
+  const set = sets.find((s) => String(s.stationSet.id) === part) ?? sets[0]!;
 
   return (
     <div className="grid gap-3">
       {sets.length > 1 && (
-        <Tabs value={overall ? "overall" : String(sets.indexOf(set))} onValueChange={onPartChange}>
+        <Tabs value={overall ? "overall" : String(set.stationSet.id)} onValueChange={onPartChange}>
           <TabsList className="h-auto flex-wrap">
-            {sets.map(({ stationSet, missingResults }, i) => (
-              <TabsTrigger key={stationSet.id} value={String(i)} className="flex-none px-3">
+            {sets.map(({ stationSet, missingResults }) => (
+              <TabsTrigger key={stationSet.id} value={String(stationSet.id)} className="flex-none px-3">
                 {stationSet.name}
                 {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
               </TabsTrigger>
@@ -184,7 +185,7 @@ function FitnessChallengeTables({ competitionId, standings, editable, part, onPa
         </Tabs>
       )}
       <ExpandableTable title={sets.length > 1 ? `${category.name} · ${overall ? "Overall" : set.stationSet.name}` : category.name}>
-        {overall ? <OverallTable standings={standings} /> : <RepsGrid competitionId={competitionId} set={set} editable={editable} />}
+        {overall ? <OverallTable standings={standings} /> : <RepsGrid key={set.stationSet.id} competitionId={competitionId} set={set} editable={editable} />}
       </ExpandableTable>
     </div>
   );

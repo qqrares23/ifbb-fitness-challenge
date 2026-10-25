@@ -1,0 +1,320 @@
+<!doctype html>
+<!--
+  Mobile judging page served by judge_server.rs over the LAN. Self-contained (no build step):
+  inline CSS + vanilla JS calling the /api endpoints. The access code is stored in localStorage
+  and sent as the X-Judge-Code header on every request.
+  shortcut: parseDuration/formatDuration are a port of src/engine/time.ts — keep in sync if the
+  Speed Fit time format ever changes.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Judging</title>
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      :root { --navy: #0b1f4d; --gold: #c8a04f; --line: #e3e6ec; --muted: #6b7280; --bad: #b42318; }
+      body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #111; background: #f4f5f7; }
+      header { position: sticky; top: 0; background: var(--navy); color: #fff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+      header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+      header button { background: transparent; border: 1px solid rgba(255,255,255,.4); color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+      main { padding: 16px; max-width: 640px; margin: 0 auto; }
+      .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+      select, input { width: 100%; font-size: 17px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+      .field { margin-bottom: 12px; }
+      .field:last-child { margin-bottom: 0; }
+      .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .row:last-child { border-bottom: none; }
+      .bib { flex: 0 0 44px; height: 44px; border-radius: 10px; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+      .who { flex: 1; min-width: 0; }
+      .who .name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .who .sub { font-size: 12px; color: var(--muted); }
+      .row input { flex: 0 0 96px; text-align: center; }
+      .row input.time { flex: 0 0 120px; }
+      .row input.invalid { border-color: var(--bad); }
+      .note { font-size: 13px; color: var(--muted); text-align: center; padding: 24px 0; }
+      #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: 90%; opacity: 0; transition: opacity .2s; pointer-events: none; }
+      #toast.show { opacity: 1; }
+      #toast.bad { background: var(--bad); }
+      #gate { position: fixed; inset: 0; background: var(--navy); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
+      #gate.hidden { display: none; }
+      #gate input { max-width: 240px; text-align: center; letter-spacing: 4px; font-size: 22px; color: #111; }
+      #gate button { background: var(--gold); color: #111; border: none; border-radius: 10px; padding: 12px 24px; font-size: 16px; font-weight: 600; }
+      #gate .err { color: #ffd0cb; font-size: 14px; min-height: 18px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Judging</h1>
+      <button id="change-code" type="button">Code</button>
+    </header>
+    <main>
+      <div id="nav"></div>
+      <div id="rows" class="card"></div>
+    </main>
+    <div id="toast"></div>
+    <div id="gate" class="hidden">
+      <div style="font-size:18px;font-weight:600">Enter the access code</div>
+      <input id="gate-input" inputmode="numeric" autocomplete="off" placeholder="000000" />
+      <div class="err" id="gate-err"></div>
+      <button id="gate-submit" type="button">Connect</button>
+    </div>
+
+    <script>
+      const CODE_KEY = "judgeCode";
+      const SEL_KEY = "judgeSel";
+      let data = null; // last /api/state payload
+      let sel = loadSel(); // { compId, catId, setId, station }
+      let structureKey = ""; // changes when the chosen comp/category/set/station changes
+      let navKey = ""; // changes when the pickers' options or selection change
+
+      function loadSel() {
+        try { return JSON.parse(localStorage.getItem(SEL_KEY)) || {}; } catch { return {}; }
+      }
+      function saveSel() { localStorage.setItem(SEL_KEY, JSON.stringify(sel)); }
+
+      function toast(msg, bad) {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.className = "show" + (bad ? " bad" : "");
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => (el.className = ""), 2600);
+      }
+
+      // --- API ---
+      async function api(path, options) {
+        const code = localStorage.getItem(CODE_KEY) || "";
+        const res = await fetch(path, {
+          ...options,
+          headers: { "Content-Type": "application/json", "X-Judge-Code": code, ...(options && options.headers) },
+        });
+        if (res.status === 401) { showGate(); throw new Error("unauthorized"); }
+        return res;
+      }
+
+      async function refresh() {
+        let res;
+        try {
+          res = await api("/api/state");
+        } catch (e) {
+          if (e.message !== "unauthorized") toast("Can't reach the laptop. Retrying…", true);
+          return;
+        }
+        if (!res.ok) return;
+        data = await res.json();
+        hideGate();
+        render();
+      }
+
+      // --- Time helpers (port of src/engine/time.ts) ---
+      const MAX_TIME_MS = 24 * 60 * 60 * 1000 - 10;
+      function parseDuration(text) {
+        const m = /^(?:(?:(\d+):)?(\d+):)?(\d+)(?:[.,](\d{1,2}))?$/.exec(text.trim());
+        if (!m) return undefined;
+        const [, h, mi, s, fr] = m;
+        const hours = Number(h ?? 0), minutes = Number(mi ?? 0), seconds = Number(s);
+        if (mi !== undefined && seconds > 59) return undefined;
+        if (h !== undefined && minutes > 59) return undefined;
+        const hundredths = Number((fr ?? "0").padEnd(2, "0"));
+        const ms = ((hours * 60 + minutes) * 60 + seconds) * 1000 + hundredths * 10;
+        return ms > 0 && ms <= MAX_TIME_MS ? ms : undefined;
+      }
+      function formatDuration(ms) {
+        const hundredths = Math.round(ms / 10);
+        const pad = (n) => String(n).padStart(2, "0");
+        const totalSeconds = Math.floor(hundredths / 100);
+        const fraction = pad(hundredths % 100);
+        const seconds = totalSeconds % 60;
+        const totalMinutes = Math.floor(totalSeconds / 60);
+        if (totalMinutes >= 60) return `${Math.floor(totalMinutes / 60)}:${pad(totalMinutes % 60)}:${pad(seconds)}.${fraction}`;
+        return `${totalMinutes}:${pad(seconds)}.${fraction}`;
+      }
+
+      // --- Lookups into the current payload ---
+      const comps = () => (data ? data.competitions : []);
+      const comp = () => comps().find((c) => c.id === sel.compId) || comps()[0] || null;
+      const categoriesOf = (c) => (c ? c.categories : []);
+      const category = (c) => categoriesOf(c).find((x) => x.id === sel.catId) || categoriesOf(c)[0] || null;
+      const entriesOf = (c, cat) => (c && cat ? c.entries.filter((e) => e.categoryId === cat.id) : []);
+      const setsOf = (c, cat) => (c && cat ? c.stationSets.filter((s) => cat.stationSetIds.includes(s.id)) : []);
+      const stationSet = (c, cat) => setsOf(c, cat).find((s) => s.id === sel.setId) || setsOf(c, cat)[0] || null;
+
+      // --- Rendering ---
+      function render() {
+        const navEl = document.getElementById("nav");
+        const rowsEl = document.getElementById("rows");
+        const list = comps();
+        if (list.length === 0) {
+          navEl.innerHTML = "";
+          rowsEl.innerHTML = '<div class="note">No competition is running. Ask the organiser to start one.</div>';
+          structureKey = "";
+          navKey = "";
+          return;
+        }
+
+        const c = comp();
+        sel.compId = c.id;
+        const cat = category(c);
+        if (cat) sel.catId = cat.id;
+        const fitness = c.kind !== "speed_fit";
+        let set = null, station = null;
+        if (fitness) {
+          set = stationSet(c, cat);
+          if (set) {
+            sel.setId = set.id;
+            const stations = set.stations.map((s) => s.stationNumber);
+            if (!stations.includes(sel.station)) sel.station = stations[0];
+            station = set.stations.find((s) => s.stationNumber === sel.station) || null;
+          }
+        }
+        saveSel();
+
+        // Only rebuild the pickers when their options or selection change, so a poll refresh
+        // doesn't close a dropdown the judge is using.
+        const nav = JSON.stringify([
+          comps().map((x) => x.id),
+          c.id,
+          categoriesOf(c).map((x) => x.id),
+          cat && cat.id,
+          fitness ? setsOf(c, cat).map((x) => x.id) : null,
+          set && set.id,
+          fitness && set ? set.stations.map((s) => s.stationNumber) : null,
+          sel.station,
+        ]);
+        if (nav !== navKey) {
+          navKey = nav;
+          navEl.innerHTML = navHtml(c, cat, fitness, set);
+          wireNav();
+        }
+
+        const key = [c.id, cat && cat.id, fitness, set && set.id, station && station.stationNumber].join("|");
+        if (key !== structureKey) {
+          structureKey = key;
+          rowsEl.innerHTML = rowsHtml(c, cat, fitness, set, station);
+          wireRows(c, fitness, set, station);
+        }
+        applyValues(c, fitness, set, station);
+      }
+
+      function selectHtml(id, label, options, selected) {
+        const opts = options.map((o) => `<option value="${o.value}"${o.value === selected ? " selected" : ""}>${esc(o.label)}</option>`).join("");
+        return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts}</select></div>`;
+      }
+
+      function navHtml(c, cat, fitness, set) {
+        let html = '<div class="card">';
+        if (comps().length > 1) {
+          html += selectHtml("sel-comp", "Competition", comps().map((x) => ({ value: x.id, label: x.name })), c.id);
+        }
+        const cats = categoriesOf(c);
+        html += selectHtml("sel-cat", "Category", cats.map((x) => ({ value: x.id, label: x.name })), cat ? cat.id : undefined);
+        if (fitness) {
+          const sets = setsOf(c, cat);
+          if (sets.length > 1) html += selectHtml("sel-set", "Station set", sets.map((x) => ({ value: x.id, label: x.name })), set ? set.id : undefined);
+          if (set) {
+            const stationOpts = set.stations.map((s) => ({ value: s.stationNumber, label: `Station ${s.stationNumber}${s.exerciseName ? " — " + s.exerciseName : ""}` }));
+            html += selectHtml("sel-station", "Station", stationOpts, sel.station);
+          }
+        }
+        return html + "</div>";
+      }
+
+      function wireNav() {
+        const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("change", fn); };
+        on("sel-comp", (e) => { sel.compId = Number(e.target.value); sel.catId = undefined; sel.setId = undefined; sel.station = undefined; render(); });
+        on("sel-cat", (e) => { sel.catId = Number(e.target.value); sel.setId = undefined; sel.station = undefined; render(); });
+        on("sel-set", (e) => { sel.setId = Number(e.target.value); sel.station = undefined; render(); });
+        on("sel-station", (e) => { sel.station = Number(e.target.value); render(); });
+      }
+
+      function rowsHtml(c, cat, fitness, set, station) {
+        const entries = entriesOf(c, cat);
+        if (entries.length === 0) return '<div class="note">No athletes in this category.</div>';
+        if (fitness && !station) return '<div class="note">Pick a station set for this category in the app.</div>';
+        return entries
+          .map((e) => {
+            const field = fitness
+              ? `<input class="reps" inputmode="numeric" data-entry="${e.id}" aria-label="Reps for number ${e.bibNumber}" />`
+              : `<input class="time" inputmode="text" placeholder="m:ss.cc" data-entry="${e.id}" aria-label="Time for number ${e.bibNumber}" />`;
+            return `<div class="row"><div class="bib">${e.bibNumber}</div><div class="who"><div class="name">${esc(e.lastName)} ${esc(e.firstName)}</div><div class="sub">${esc(e.country || "")}</div></div>${field}</div>`;
+          })
+          .join("");
+      }
+
+      function wireRows(c, fitness, set, station) {
+        document.querySelectorAll("#rows input").forEach((input) => {
+          const entryId = Number(input.dataset.entry);
+          input.addEventListener("change", () => (fitness ? commitScore(input, entryId, set.id, station.stationNumber) : commitTime(input, entryId)));
+        });
+      }
+
+      // Refresh saved values without disturbing the field the judge is typing in.
+      function applyValues(c, fitness, set, station) {
+        document.querySelectorAll("#rows input").forEach((input) => {
+          if (document.activeElement === input) return;
+          const entryId = Number(input.dataset.entry);
+          if (fitness) {
+            const score = c.scores.find((s) => s.entryId === entryId && s.setId === set.id && s.stationNumber === station.stationNumber);
+            input.value = score ? String(score.reps) : "";
+          } else {
+            const t = c.times.find((x) => x.entryId === entryId);
+            input.value = t ? formatDuration(t.timeMs) : "";
+          }
+          input.classList.remove("invalid");
+        });
+      }
+
+      async function commitScore(input, entryId, setId, stationNumber) {
+        const raw = input.value.trim();
+        const reps = raw === "" ? null : Number(raw);
+        if (reps !== null && (!Number.isInteger(reps) || reps < 0)) { input.classList.add("invalid"); return; }
+        await send(input, "/api/score", { entryId, setId, stationNumber, reps }, "Reps saved");
+      }
+
+      async function commitTime(input, entryId) {
+        const raw = input.value.trim();
+        let timeMs = null;
+        if (raw !== "") {
+          timeMs = parseDuration(raw);
+          if (timeMs === undefined) { input.classList.add("invalid"); toast("That is not a valid time.", true); return; }
+        }
+        await send(input, "/api/time", { entryId, timeMs }, "Time saved");
+      }
+
+      async function send(input, path, body, okMsg) {
+        input.classList.remove("invalid");
+        try {
+          const res = await api(path, { method: "POST", body: JSON.stringify(body) });
+          if (res.ok) { toast(okMsg); refresh(); }
+          else { input.classList.add("invalid"); toast(await res.text(), true); refresh(); }
+        } catch (e) {
+          if (e.message !== "unauthorized") toast("Couldn't save. Check the connection.", true);
+        }
+      }
+
+      function esc(s) { return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch])); }
+
+      // --- Access-code gate ---
+      function showGate() {
+        const g = document.getElementById("gate");
+        g.classList.remove("hidden");
+        document.getElementById("gate-err").textContent = localStorage.getItem(CODE_KEY) ? "That code didn't work." : "";
+        document.getElementById("gate-input").focus();
+      }
+      function hideGate() { document.getElementById("gate").classList.add("hidden"); }
+      function submitCode() {
+        const val = document.getElementById("gate-input").value.trim();
+        if (val) { localStorage.setItem(CODE_KEY, val); refresh(); }
+      }
+      document.getElementById("gate-submit").addEventListener("click", submitCode);
+      document.getElementById("gate-input").addEventListener("keydown", (e) => { if (e.key === "Enter") submitCode(); });
+      document.getElementById("change-code").addEventListener("click", showGate);
+
+      // --- Start ---
+      if (!localStorage.getItem(CODE_KEY)) showGate();
+      refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>

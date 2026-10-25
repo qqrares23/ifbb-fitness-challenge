@@ -6,6 +6,7 @@ import { CalendarCheckIcon } from "@/components/icons/calendar-check";
 import { LayersIcon } from "@/components/icons/layers";
 import { UsersIcon } from "@/components/icons/users";
 import { DatabaseTransfer } from "@/features/data/DatabaseTransfer";
+import { HostJudging } from "@/features/data/HostJudging";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -41,6 +42,7 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="grid gap-2 border-t px-3 py-3">
+          <HostJudging />
           <DatabaseTransfer />
           <p className="px-2 text-[11px] text-muted-foreground">Data is stored on this computer only. Export it to move it to another one.</p>
         </div>

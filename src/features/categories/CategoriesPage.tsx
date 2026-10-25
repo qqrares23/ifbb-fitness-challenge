@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlusIcon } from "@/components/icons/plus";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { useConfirm } from "@/components/shared/useConfirm";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState } from "@/components/shared/QueryState";
 import { RowActions } from "@/components/shared/RowActions";
@@ -23,12 +23,6 @@ type Editing =
   | { kind: "subgroup"; group: AgeGroup; subgroup: AgeSubgroup | null }
   | { kind: "level"; subgroup: AgeSubgroup; subgroupLabel: string; level: CategoryLevel | null };
 
-interface PendingDelete {
-  title: string;
-  description: string;
-  run: () => void;
-}
-
 const KEEP_COPIES = "Competitions that already use it keep their copy.";
 
 export function CategoriesPage() {
@@ -39,7 +33,7 @@ export function CategoriesPage() {
   const libraryName = `${FEDERATION_LABELS[federation]} ${COMPETITION_KIND_LABELS[kind]}`;
   const m = useCategoryLibraryMutations();
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [deleting, setDeleting] = useState<PendingDelete | null>(null);
+  const { confirm, dialog } = useConfirm();
   const close = (open: boolean) => !open && setEditing(null);
 
   const addGroupButton = (
@@ -91,7 +85,7 @@ export function CategoriesPage() {
                         noun="age group"
                         onEdit={() => setEditing({ kind: "group", group })}
                         onDelete={() =>
-                          setDeleting({
+                          confirm({
                             title: "Delete age group?",
                             description: `"${group.name}" and all its sub-groups and levels will be removed from the library. ${KEEP_COPIES}`,
                             run: () => m.deleteGroup.mutate(group.id),
@@ -123,7 +117,7 @@ export function CategoriesPage() {
                                   level={level}
                                   onRename={() => setEditing({ kind: "level", subgroup, subgroupLabel: label, level })}
                                   onDelete={() =>
-                                    setDeleting({
+                                    confirm({
                                       title: "Delete level?",
                                       description: `"${level.name}" will be removed from ${label}. ${KEEP_COPIES}`,
                                       run: () => m.deleteLevel.mutate(level.id),
@@ -139,7 +133,7 @@ export function CategoriesPage() {
                               noun="sub-group"
                               onEdit={() => setEditing({ kind: "subgroup", group, subgroup })}
                               onDelete={() =>
-                                setDeleting({
+                                confirm({
                                   title: "Delete sub-group?",
                                   description: `"${label}" and its levels will be removed from the library. ${KEEP_COPIES}`,
                                   run: () => m.deleteSubgroup.mutate(subgroup.id),
@@ -191,15 +185,7 @@ export function CategoriesPage() {
             : m.createLevel.mutateAsync({ subgroupId: editing.subgroup.id, name });
         }}
       />
-      <ConfirmDialog
-        open={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title={deleting?.title ?? ""}
-        description={deleting?.description ?? ""}
-        confirmLabel="Delete"
-        destructive
-        onConfirm={() => deleting?.run()}
-      />
+      {dialog}
     </>
   );
 }

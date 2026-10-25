@@ -70,7 +70,8 @@ export function useCategoryMutations() {
 }
 
 export function useCompetitionResults(competition: Pick<Competition, "id" | "kind">, enabled: boolean) {
-  return useQuery({ queryKey: queryKeys.competitionResults(competition.id), queryFn: () => listResults(competition), enabled });
+  // Poll while results are shown so writes from judges hosted on the network appear here too.
+  return useQuery({ queryKey: queryKeys.competitionResults(competition.id), queryFn: () => listResults(competition), enabled, refetchInterval: enabled ? 3000 : false });
 }
 
 export function useResultMutations(competitionId: number) {
