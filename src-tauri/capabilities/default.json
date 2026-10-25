@@ -12,6 +12,7 @@
     "dialog:allow-save",
     "fs:allow-write-file",
     "dialog:allow-open",
-    "core:window:allow-set-fullscreen"
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize"
   ]
 }
