@@ -5,11 +5,25 @@ import { cn } from "@/lib/utils";
 
 const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && target.closest("input, textarea, button, [role=combobox]") !== null;
 
-/** Puts the app window in or out of full screen; harmless where that isn't available. */
-async function setWindowFullscreen(fullscreen: boolean) {
+/** Whether the window was already maximized before judging mode, so leaving it restores the same state. */
+let wasMaximized = true;
+
+/**
+ * Maximizes the app window for judging (and restores it afterwards); harmless where that isn't available.
+ * Deliberately not OS full screen: on Windows a window covering the whole monitor can switch into a
+ * fullscreen presentation mode in which, on some graphics drivers, the mouse pointer freezes until
+ * full screen is left.
+ */
+async function setWindowExpanded(expanded: boolean) {
   try {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    await getCurrentWindow().setFullscreen(fullscreen);
+    const appWindow = getCurrentWindow();
+    if (expanded) {
+      wasMaximized = await appWindow.isMaximized();
+      if (!wasMaximized) await appWindow.maximize();
+    } else if (!wasMaximized) {
+      await appWindow.unmaximize();
+    }
   } catch {
     // Not running in Tauri (or not allowed): the in-app overlay still fills the window.
   }
@@ -24,7 +38,7 @@ export function ExpandableTable({ title, children }: { title: string; children: 
 
   useEffect(() => {
     if (!expanded) return;
-    void setWindowFullscreen(true);
+    void setWindowExpanded(true);
     const onKey = (event: KeyboardEvent) => {
       // Escape inside a field cancels that edit; only Escape elsewhere leaves full screen.
       if (event.key === "Escape" && !isTyping(document.activeElement)) setExpanded(false);
@@ -32,7 +46,7 @@ export function ExpandableTable({ title, children }: { title: string; children: 
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
-      void setWindowFullscreen(false);
+      void setWindowExpanded(false);
     };
   }, [expanded]);
 

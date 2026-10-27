@@ -153,7 +153,7 @@ src/
 `DATABASE_URL` is duplicated in `src-tauri/src/lib.rs` and `src/db/client.ts`. **Both must match.**
 
 **Capabilities** (`capabilities/default.json`): `core:default`, `sql:default`, `sql:allow-execute`,
-`dialog:allow-save`, `dialog:allow-open`, `fs:allow-write-file`, `core:window:allow-set-fullscreen`
+`dialog:allow-save`, `dialog:allow-open`, `fs:allow-write-file`, `core:window:allow-maximize`, `core:window:allow-unmaximize`
 (the full-screen results table). The file dialog grants write access only to the path the user
 picked; the database commands are the app's own and need no fs scope.
 
@@ -333,8 +333,9 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
     Later library edits never change a competition's rules.
   - **Status change** (`setCompetitionStatus`): stamps `started_at` (first start only) and `finished_at`.
 - `results.ts` returns a discriminated union `RecordedResults` (`scores` or `times`, depending on `kind`).
-- Inputs are validated on the JS side too (e.g. `MAX_REPS`, `MAX_STATIONS = 50`, `MAX_TIME_MS`), with
-  constants that mirror the SQL `CHECK`s.
+- Inputs are validated on the JS side too (e.g. `MAX_REPS`, `MAX_STATIONS = 50`, `MAX_TIME_MS`).
+  `MAX_REPS`, `MAX_TIME_MS` and the age bounds mirror SQL `CHECK`s (`consistency.test.ts` guards them);
+  `MAX_STATIONS` is a UI-only limit with no SQL backstop.
 
 ### 7.4 Caching and mutations
 
@@ -463,7 +464,7 @@ CompetitionDetailPage   load setup (["competitions", id])
     (Place | Nr | Athlete | Time), in **ranking order**: rows glide to their new place
     (`useFlipAnimation`) as results are saved; the leader / winner row has a trophy and gold tint
     (`AthleteCell`). Athletes without results are unplaced. Station headers have a photo button.
-  - `ExpandableTable`: double-click toggles a full-screen overlay (and the window's full screen)
+  - `ExpandableTable`: double-click toggles a full-screen overlay (and maximizes the window; not OS full screen, which can freeze the mouse pointer on Windows)
     with the same mounted table, so results can be entered there; Escape outside a field exits.
 - **Finish confirmation**: warns how many station results are empty (counted as 0) or how many
   athletes have no time (listed without a place).

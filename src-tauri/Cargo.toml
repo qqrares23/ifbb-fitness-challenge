@@ -1,6 +1,6 @@
 [package]
 name = "ifbb-fitness-challenge"
-version = "0.7.0"
+version = "0.7.2"
 description = "IFBB Fitness Challenge — local competition manager"
 authors = ["IFBB"]
 edition = "2021"
@@ -22,6 +22,12 @@ tauri = { version = "2", features = [] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+# Local judging server: serves a mobile page + JSON API over the LAN (see judge_server.rs).
+axum = "0.8"
+tokio = { version = "1", features = ["net", "sync"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

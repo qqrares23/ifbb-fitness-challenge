@@ -141,6 +141,7 @@ describe("parseDuration / formatDuration", () => {
     expect(parseDuration(" 01:23 ")).toBe(83_000);
     expect(parseDuration("1:02:03,5")).toBe(3_723_500);
     expect(parseDuration("90")).toBe(90_000);
+    expect(parseDuration("23:59:59.99")).toBe(86_399_990); // exactly MAX_TIME_MS, must be accepted
   });
 
   it("rejects malformed, zero, overflowing or over-precise times", () => {
