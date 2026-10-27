@@ -306,6 +306,8 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
 ### 7.3 Data access layer (`src/db/`)
 
 - `client.ts`: `db()` returns the single shared `Database` connection, a lazily created promise.
+  On load it switches the file to WAL (`PRAGMA journal_mode = WAL`, persistent), so saves are cheap
+  and reads never wait for a write on another pooled connection.
 - One module per table exposes plain async functions (`listX`, `createX`, `updateX`, `deleteX`, …).
   SQL is written by hand with `$1…` parameters, and columns are aliased to camelCase
   (`first_name AS firstName`).
@@ -361,7 +363,8 @@ Invalidation choices:
 - category-library writes touch only the library, because competitions hold copies;
 - all competition setup writes invalidate `["competitions"]`, which also refreshes nested results;
 - a single rep or time save invalidates only `["competitions", id, "results"]`, which keeps live
-  scoring cheap.
+  scoring cheap. It is also applied to that cache optimistically before the write
+  (`useResultMutations`), so the standings move without waiting for the database.
 
 Each feature exposes `useX()` (query) and `useXMutations()` (a group of `useDbMutation`s) in a
 `useX.ts` file.
@@ -529,11 +532,12 @@ exportResults(format, setup, results, logos)
 **Recording a rep.** The judge types `25` in `RepsGrid` and presses Enter:
 
 1. `CommitNumberInput` validates the range and calls `setScore.mutateAsync({ entryId, stationNumber, reps })`.
-2. `db/scores.setScore` validates again, then runs the upsert.
-3. SQLite triggers check that the competition is a Fitness Challenge and is `running`.
-4. On success, `["competitions", id, "results"]` is invalidated and refetched.
-5. `competitionResults` re-ranks, and the `RepsGrid` rows glide to their new places.
-6. On failure, a toast shows the trigger message and the input reverts.
+2. `useResultMutations` writes the score into the cached results first (optimistic), so
+   `competitionResults` re-ranks and the `RepsGrid` rows glide to their new places at once.
+3. `db/scores.setScore` validates again, then runs the upsert.
+4. SQLite triggers check that the competition is a Fitness Challenge and is `running`.
+5. On success, `["competitions", id, "results"]` is invalidated and refetched, confirming the result.
+6. On failure, a toast shows the trigger message, the results are refetched and the input reverts.
 
 **Late entry.** While running, the user picks *Enter athlete* and ticks an athlete:
 

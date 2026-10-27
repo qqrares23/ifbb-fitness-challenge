@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addCategoriesFromLibrary, deleteCategory, setCategoryUsesStationSet, updateCategoryRules } from "@/db/categories";
 import {
   createCompetition,
@@ -12,7 +12,7 @@ import {
 } from "@/db/competitions";
 import { addEntries, addTeamEntry, deleteEntry, setEntryBib, setEntryCategory } from "@/db/entries";
 import { queryKeys } from "@/db/queryKeys";
-import { clearResults, listResults } from "@/db/results";
+import { clearResults, listResults, type RecordedResults } from "@/db/results";
 import { setScore } from "@/db/scores";
 import { setTime } from "@/db/speedFitTimes";
 import { createStationSet, deleteStationSet, renameStationSet, setStationCount, setStationExercise } from "@/db/stations";
@@ -77,10 +77,43 @@ export function useCompetitionResults(competition: Pick<Competition, "id" | "kin
 }
 
 export function useResultMutations(competitionId: number) {
-  const invalidates = [queryKeys.competitionResults(competitionId)];
+  const queryClient = useQueryClient();
+  const key = queryKeys.competitionResults(competitionId);
+  const invalidates = [key];
+
+  // Shows a result in the cached standings (re-ranked at once) before it is saved; the refetch
+  // after the save confirms it, and a failed save refetches what the database really has.
+  function optimistic<A>(save: (args: A) => Promise<void>, apply: (results: RecordedResults, args: A) => RecordedResults) {
+    return async (args: A) => {
+      // A refresh still in flight from an earlier save would overwrite this result with older data.
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData<RecordedResults>(key, (results) => results && apply(results, args));
+      try {
+        await save(args);
+      } catch (error) {
+        void queryClient.invalidateQueries({ queryKey: key });
+        throw error;
+      }
+    };
+  }
+
   return {
-    setScore: useDbMutation(setScore, { invalidates }),
-    setTime: useDbMutation(setTime, { invalidates }),
+    setScore: useDbMutation(
+      optimistic(setScore, (results, { entryId, setId, stationNumber, reps }) => {
+        if (results.kind !== "fitness_challenge") return results;
+        const others = results.scores.filter((s) => !(s.entryId === entryId && s.setId === setId && s.stationNumber === stationNumber));
+        return { ...results, scores: reps === null ? others : [...others, { entryId, setId, stationNumber, reps }] };
+      }),
+      { invalidates },
+    ),
+    setTime: useDbMutation(
+      optimistic(setTime, (results, { entryId, timeMs }) => {
+        if (results.kind !== "speed_fit") return results;
+        const others = results.times.filter((t) => t.entryId !== entryId);
+        return { ...results, times: timeMs === null ? others : [...others, { entryId, timeMs }] };
+      }),
+      { invalidates },
+    ),
   };
 }
 
