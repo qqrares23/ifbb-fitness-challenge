@@ -18,7 +18,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow};
 use sqlx::{Row, SqlitePool};
 use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
@@ -233,28 +233,37 @@ async fn post_time(State(state): State<ApiState>, headers: HeaderMap, Json(body)
     }
 }
 
-/// Everything the judging page needs for each competition that is currently `running`.
+/// Rows tagged with what they belong to (a competition or a station set), for grouping in Rust.
+type Tagged = Vec<(i64, Value)>;
+
+async fn tagged(pool: &SqlitePool, sql: &str, row: impl Fn(&SqliteRow) -> Value) -> Result<Tagged, sqlx::Error> {
+    Ok(sqlx::query(sql).fetch_all(pool).await?.iter().map(|r| (r.get::<i64, _>("owner"), row(r))).collect())
+}
+
+fn owned_by(rows: &Tagged, owner: i64) -> Vec<Value> {
+    rows.iter().filter(|(o, _)| *o == owner).map(|(_, v)| v.clone()).collect()
+}
+
+/// Everything the judging page needs for each competition that is currently `running`. One query
+/// per kind of data for all of them (the page polls every few seconds from every phone).
 /// Read queries mirror the SQL in db/categories.ts, db/entries.ts, db/stations.ts and db/results.ts.
 async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Error> {
+    const RUNNING: &str = "(SELECT id FROM competitions WHERE status = 'running')";
     let comps = sqlx::query("SELECT id, name, kind FROM competitions WHERE status = 'running' ORDER BY id")
         .fetch_all(pool)
         .await?;
+    if comps.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    let mut out = Vec::with_capacity(comps.len());
-    for comp in &comps {
-        let id: i64 = comp.get("id");
-        let kind: String = comp.get("kind");
-
-        let categories = sqlx::query(
-            "SELECT id, name, age_group AS ageGroup, level, \
+    let categories = tagged(
+        pool,
+        &format!(
+            "SELECT competition_id AS owner, id, name, age_group AS ageGroup, level, \
                 (SELECT json_group_array(set_id) FROM (SELECT set_id FROM category_station_sets WHERE category_id = c.id ORDER BY set_id)) AS stationSetIds \
-             FROM categories c WHERE competition_id = ? ORDER BY id",
-        )
-        .bind(id)
-        .fetch_all(pool)
-        .await?
-        .iter()
-        .map(|r| {
+             FROM categories c WHERE competition_id IN {RUNNING} ORDER BY id"
+        ),
+        |r| {
             let set_ids: Option<String> = r.get("stationSetIds");
             json!({
                 "id": r.get::<i64, _>("id"),
@@ -263,87 +272,92 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
                 "level": r.get::<Option<String>, _>("level").unwrap_or_default(),
                 "stationSetIds": set_ids.and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or_else(|| json!([])),
             })
-        })
-        .collect::<Vec<_>>();
+        },
+    )
+    .await?;
 
-        let entries = sqlx::query(
-            "SELECT e.id, e.category_id AS categoryId, e.bib_number AS bibNumber, \
-                a.first_name AS firstName, a.last_name AS lastName, a.country \
-             FROM entries e JOIN athletes a ON a.id = e.athlete_id WHERE e.competition_id = ? ORDER BY e.bib_number",
-        )
-        .bind(id)
-        .fetch_all(pool)
-        .await?
-        .iter()
-        .map(|r| {
+    // A couple or team is named by all its athletes, in order (entries.athlete_id is only the first).
+    let entries = tagged(
+        pool,
+        &format!(
+            "SELECT e.competition_id AS owner, e.id, e.category_id AS categoryId, e.bib_number AS bibNumber, a.country, \
+                COALESCE((SELECT group_concat(name, ' / ') FROM (SELECT x.last_name || ' ' || x.first_name AS name \
+                            FROM entry_members m JOIN athletes x ON x.id = m.athlete_id WHERE m.entry_id = e.id ORDER BY m.position)), \
+                         a.last_name || ' ' || a.first_name) AS name \
+             FROM entries e JOIN athletes a ON a.id = e.athlete_id WHERE e.competition_id IN {RUNNING} ORDER BY e.bib_number"
+        ),
+        |r| {
             json!({
                 "id": r.get::<i64, _>("id"),
                 "categoryId": r.get::<i64, _>("categoryId"),
                 "bibNumber": r.get::<i64, _>("bibNumber"),
-                "firstName": r.get::<String, _>("firstName"),
-                "lastName": r.get::<String, _>("lastName"),
+                "name": r.get::<String, _>("name"),
                 "country": r.get::<String, _>("country"),
             })
-        })
-        .collect::<Vec<_>>();
+        },
+    )
+    .await?;
 
-        let mut value = json!({ "id": id, "name": comp.get::<String, _>("name"), "kind": kind.clone(), "categories": categories, "entries": entries });
+    let times = tagged(
+        pool,
+        &format!(
+            "SELECT e.competition_id AS owner, t.entry_id AS entryId, t.time_ms AS timeMs FROM speed_fit_times t \
+             JOIN entries e ON e.id = t.entry_id WHERE e.competition_id IN {RUNNING}"
+        ),
+        |r| json!({ "entryId": r.get::<i64, _>("entryId"), "timeMs": r.get::<i64, _>("timeMs") }),
+    )
+    .await?;
 
-        if kind == "speed_fit" {
-            let times = sqlx::query(
-                "SELECT t.entry_id AS entryId, t.time_ms AS timeMs FROM speed_fit_times t \
-                 JOIN entries e ON e.id = t.entry_id WHERE e.competition_id = ?",
-            )
-            .bind(id)
-            .fetch_all(pool)
-            .await?
-            .iter()
-            .map(|r| json!({ "entryId": r.get::<i64, _>("entryId"), "timeMs": r.get::<i64, _>("timeMs") }))
-            .collect::<Vec<_>>();
-            value["times"] = json!(times);
-        } else {
-            let sets = sqlx::query("SELECT id, name FROM station_sets WHERE competition_id = ? ORDER BY id").bind(id).fetch_all(pool).await?;
-            let stations = sqlx::query(
-                "SELECT s.set_id AS setId, s.station_number AS stationNumber, x.name AS exerciseName \
-                 FROM competition_stations s JOIN station_sets t ON t.id = s.set_id \
-                 LEFT JOIN exercises x ON x.id = s.exercise_id WHERE t.competition_id = ? ORDER BY s.station_number",
-            )
-            .bind(id)
-            .fetch_all(pool)
-            .await?;
-            let station_sets = sets
-                .iter()
-                .map(|set| {
-                    let set_id: i64 = set.get("id");
-                    let stations = stations
-                        .iter()
-                        .filter(|r| r.get::<i64, _>("setId") == set_id)
-                        .map(|r| json!({ "stationNumber": r.get::<i64, _>("stationNumber"), "exerciseName": r.get::<Option<String>, _>("exerciseName") }))
-                        .collect::<Vec<_>>();
-                    json!({ "id": set_id, "name": set.get::<String, _>("name"), "stations": stations })
-                })
-                .collect::<Vec<_>>();
-            let scores = sqlx::query(
-                "SELECT s.entry_id AS entryId, s.set_id AS setId, s.station_number AS stationNumber, s.reps \
-                 FROM scores s JOIN entries e ON e.id = s.entry_id WHERE e.competition_id = ?",
-            )
-            .bind(id)
-            .fetch_all(pool)
-            .await?
-            .iter()
-            .map(|r| {
-                json!({
-                    "entryId": r.get::<i64, _>("entryId"),
-                    "setId": r.get::<i64, _>("setId"),
-                    "stationNumber": r.get::<i64, _>("stationNumber"),
-                    "reps": r.get::<i64, _>("reps"),
-                })
+    let stations = tagged(
+        pool,
+        &format!(
+            "SELECT s.set_id AS owner, s.station_number AS stationNumber, x.name AS exerciseName \
+             FROM competition_stations s JOIN station_sets t ON t.id = s.set_id \
+             LEFT JOIN exercises x ON x.id = s.exercise_id WHERE t.competition_id IN {RUNNING} ORDER BY s.station_number"
+        ),
+        |r| json!({ "stationNumber": r.get::<i64, _>("stationNumber"), "exerciseName": r.get::<Option<String>, _>("exerciseName") }),
+    )
+    .await?;
+    let station_sets = tagged(
+        pool,
+        &format!("SELECT competition_id AS owner, id, name FROM station_sets WHERE competition_id IN {RUNNING} ORDER BY id"),
+        |r| {
+            let id = r.get::<i64, _>("id");
+            json!({ "id": id, "name": r.get::<String, _>("name"), "stations": owned_by(&stations, id) })
+        },
+    )
+    .await?;
+
+    let scores = tagged(
+        pool,
+        &format!(
+            "SELECT e.competition_id AS owner, s.entry_id AS entryId, s.set_id AS setId, s.station_number AS stationNumber, s.reps \
+             FROM scores s JOIN entries e ON e.id = s.entry_id WHERE e.competition_id IN {RUNNING}"
+        ),
+        |r| {
+            json!({
+                "entryId": r.get::<i64, _>("entryId"),
+                "setId": r.get::<i64, _>("setId"),
+                "stationNumber": r.get::<i64, _>("stationNumber"),
+                "reps": r.get::<i64, _>("reps"),
             })
-            .collect::<Vec<_>>();
-            value["stationSets"] = json!(station_sets);
-            value["scores"] = json!(scores);
-        }
-        out.push(value);
-    }
-    Ok(out)
+        },
+    )
+    .await?;
+
+    Ok(comps
+        .iter()
+        .map(|comp| {
+            let id: i64 = comp.get("id");
+            let kind: String = comp.get("kind");
+            let mut value = json!({ "id": id, "name": comp.get::<String, _>("name"), "kind": kind, "categories": owned_by(&categories, id), "entries": owned_by(&entries, id) });
+            if kind == "speed_fit" {
+                value["times"] = json!(owned_by(&times, id));
+            } else {
+                value["stationSets"] = json!(owned_by(&station_sets, id));
+                value["scores"] = json!(owned_by(&scores, id));
+            }
+            value
+        })
+        .collect())
 }

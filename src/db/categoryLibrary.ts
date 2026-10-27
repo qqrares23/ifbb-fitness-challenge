@@ -1,5 +1,7 @@
 import type { CategoryRules } from "@/engine";
+import { db } from "./client";
 import type { CompetitionKind } from "./competitions";
+import { withConstraintMessages } from "./errors";
 
 /** Whose categories a library holds. */
 export type Federation = "ifbb" | "romania";
@@ -9,8 +11,6 @@ export interface LibraryKey {
   federation: Federation;
   kind: CompetitionKind;
 }
-import { db } from "./client";
-import { withConstraintMessages } from "./errors";
 
 /**
  * Age group (Junior, Senior…) → sub-groups by sex and age → levels (Bronze, Silver…).
@@ -39,23 +39,29 @@ export interface CategoryLevel {
 /** One library as a tree, everything in the order it was created. */
 export async function listCategoryLibrary({ federation, kind }: LibraryKey): Promise<AgeGroup[]> {
   const conn = await db();
+  const inLibrary = "SELECT id FROM age_groups WHERE federation = $1 AND kind = $2";
   const [groups, subgroups, levels] = await Promise.all([
     conn.select<Omit<AgeGroup, "subgroups">[]>("SELECT id, name FROM age_groups WHERE federation = $1 AND kind = $2 ORDER BY id", [federation, kind]),
     conn.select<Omit<AgeSubgroup, "levels">[]>(
-      "SELECT id, age_group_id AS ageGroupId, format, gender, min_age AS minAge, max_age AS maxAge FROM age_subgroups ORDER BY id",
+      `SELECT id, age_group_id AS ageGroupId, format, gender, min_age AS minAge, max_age AS maxAge FROM age_subgroups
+       WHERE age_group_id IN (${inLibrary}) ORDER BY id`,
+      [federation, kind],
     ),
-    conn.select<CategoryLevel[]>("SELECT id, subgroup_id AS subgroupId, name FROM category_levels ORDER BY id"),
+    conn.select<CategoryLevel[]>(
+      `SELECT l.id, l.subgroup_id AS subgroupId, l.name FROM category_levels l JOIN age_subgroups s ON s.id = l.subgroup_id
+       WHERE s.age_group_id IN (${inLibrary}) ORDER BY l.id`,
+      [federation, kind],
+    ),
   ]);
-  const tree = groups.map((g) => ({ ...g, subgroups: [] as AgeSubgroup[] }));
+  const groupById = new Map(groups.map((g) => [g.id, { ...g, subgroups: [] as AgeSubgroup[] }]));
   const subgroupById = new Map<number, AgeSubgroup>();
-  // Sub-groups and levels of the other library find no parent here and are skipped.
   for (const s of subgroups) {
     const subgroup = { ...s, levels: [] };
     subgroupById.set(s.id, subgroup);
-    tree.find((g) => g.id === s.ageGroupId)?.subgroups.push(subgroup);
+    groupById.get(s.ageGroupId)?.subgroups.push(subgroup);
   }
   for (const level of levels) subgroupById.get(level.subgroupId)?.levels.push(level);
-  return tree;
+  return [...groupById.values()];
 }
 
 const duplicateGroup = (name: string) => ({ unique: `This library already has an age group named "${name.trim()}".` });

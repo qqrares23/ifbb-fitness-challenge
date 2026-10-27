@@ -143,12 +143,23 @@ src/
   - `prepare_export(destination)` / `finish_export(destination)`: the app runs `VACUUM INTO` on
     `<destination>.partial` (a complete, consistent copy, whatever is in the write-ahead log or
     being read on another pooled connection), then it is renamed over `destination`;
-  - `import_database(source)`: checks the SQLite file header, copies the current database to
-    `fitness-challenge.before-import.db`, removes stale `-wal`/`-shm` files and copies `source` in.
+  - `import_database(source)`: checks the SQLite file header, makes a dated backup (below), copies
+    the current database to `fitness-challenge.before-import.db` (only if none is there yet, so a
+    second import can't bury the original), removes stale `-wal`/`-shm` files and copies `source` in.
     The app closes its connection first (`closeDb`) and reloads after, which runs any migrations an
     older export still needs;
   - `has_database_backup` / `restore_database_backup`: offered on the startup error screen
     (`DatabaseGate`) when an imported database won't open.
+
+**Automatic backups** (`backup.rs`, UI in `features/data/Backups.tsx`): `VACUUM INTO` a dated
+`fitness-challenge-YYYY-MM-DD_HH-MM-SS.db` in `Desktop\IFBB Fitness Challenge backups` when the app
+exits (`RunEvent::Exit`), every 30 minutes while it runs (both skipped when neither the database nor
+a non-empty `-wal` changed since the newest copy) and before an import. The newest 30 are kept.
+Optionally each copy also goes to `<cloud folder>\IFBB Fitness Challenge backups`, meant for a folder
+synced by Google Drive for desktop; the guide in the Backups dialog opens by itself on first use.
+Settings live in `backup-settings.json` next to the database. Only copies go to the synced folder:
+a sync tool must never touch the live SQLite file. `backup::RUNNING` serialises backups with each
+other and with import / restore.
 
 `DATABASE_URL` is duplicated in `src-tauri/src/lib.rs` and `src/db/client.ts`. **Both must match.**
 

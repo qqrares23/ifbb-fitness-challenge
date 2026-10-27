@@ -24,6 +24,11 @@ export interface Entry extends Omit<Athlete, "id"> {
   members: EntryMember[];
 }
 
+/** A typed number must be a whole number of 1 or more; null (automatic) passes. */
+function checkBib(bib: number | null): void {
+  if (bib !== null && (!Number.isInteger(bib) || bib < 1)) throw new Error("A number must be a whole number of 1 or more.");
+}
+
 const ATHLETE_COLUMNS = "a.first_name AS firstName, a.last_name AS lastName, a.date_of_birth AS dateOfBirth, a.sex, a.country, a.club";
 
 export async function listEntries(competitionId: number): Promise<Entry[]> {
@@ -46,7 +51,11 @@ export async function listEntries(competitionId: number): Promise<Entry[]> {
     ),
   ]);
   const membersByEntry = new Map<number, EntryMember[]>();
-  for (const { entryId, ...member } of teamMembers) membersByEntry.set(entryId, [...(membersByEntry.get(entryId) ?? []), member]);
+  for (const { entryId, ...member } of teamMembers) {
+    const members = membersByEntry.get(entryId);
+    if (members) members.push(member);
+    else membersByEntry.set(entryId, [member]);
+  }
   // SQLite has no boolean type; those columns are 0 / 1.
   return rows.map(({ lateEntry, team, ...row }) => ({
     ...row,
@@ -69,9 +78,7 @@ export async function addEntries(args: {
   bibNumbers?: (number | null)[];
 }): Promise<void> {
   const picked = args.athleteIds.map((athleteId, i) => ({ a: athleteId, n: args.bibNumbers?.[i] ?? null }));
-  for (const { n } of picked) {
-    if (n !== null && (!Number.isInteger(n) || n < 1)) throw new Error("A number must be a whole number of 1 or more.");
-  }
+  picked.forEach(({ n }) => checkBib(n));
   await withConstraintMessages(
     (await db()).execute(
       `WITH picked AS (
@@ -109,7 +116,7 @@ export async function setEntryCategory(args: { entryId: number; categoryId: numb
 export async function addTeamEntry(args: { competitionId: number; categoryId: number; size: number; athleteIds: number[]; bibNumber: number | null }): Promise<void> {
   const { competitionId, categoryId, athleteIds, bibNumber } = args;
   if (athleteIds.length !== args.size || new Set(athleteIds).size !== athleteIds.length) throw new Error(`Pick ${args.size} different athletes.`);
-  if (bibNumber !== null && (!Number.isInteger(bibNumber) || bibNumber < 1)) throw new Error("A number must be a whole number of 1 or more.");
+  checkBib(bibNumber);
   const conn = await db();
   const { lastInsertId } = await withConstraintMessages(
     conn.execute(
@@ -132,7 +139,7 @@ export async function addTeamEntry(args: { competitionId: number; categoryId: nu
 
 /** Changes a number: on every individual entry of the athlete, or on the couple's / team's entry. */
 export async function setEntryBib(args: { entryId: number; bibNumber: number }): Promise<void> {
-  if (!Number.isInteger(args.bibNumber) || args.bibNumber < 1) throw new Error("A bib number must be a whole number of 1 or more.");
+  checkBib(args.bibNumber);
   await (await db()).execute(
     `WITH target AS (SELECT e.id, e.competition_id, e.athlete_id, k.format FROM entries e JOIN categories k ON k.id = e.category_id WHERE e.id = $2)
      UPDATE entries SET bib_number = $1

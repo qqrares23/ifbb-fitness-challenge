@@ -237,7 +237,7 @@
             const field = fitness
               ? `<input class="reps" inputmode="numeric" data-entry="${e.id}" aria-label="Reps for number ${e.bibNumber}" />`
               : `<input class="time" inputmode="text" placeholder="m:ss.cc" data-entry="${e.id}" aria-label="Time for number ${e.bibNumber}" />`;
-            return `<div class="row"><div class="bib">${e.bibNumber}</div><div class="who"><div class="name">${esc(e.lastName)} ${esc(e.firstName)}</div><div class="sub">${esc(e.country || "")}</div></div>${field}</div>`;
+            return `<div class="row"><div class="bib">${e.bibNumber}</div><div class="who"><div class="name">${esc(e.name)}</div><div class="sub">${esc(e.country || "")}</div></div>${field}</div>`;
           })
           .join("");
       }
