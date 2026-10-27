@@ -21,8 +21,9 @@ const KEEP: usize = 30;
 const INTERVAL: Duration = Duration::from_secs(30 * 60);
 const SETTINGS_FILE: &str = "backup-settings.json";
 
-/// One backup at a time: the timer, closing, an import and "Back up now" can overlap.
-static RUNNING: Mutex<()> = Mutex::const_new(());
+/// One backup at a time: the timer, closing, an import and "Back up now" can overlap. Also held
+/// while an import or restore replaces the database file, so no backup opens it meanwhile.
+pub(crate) static RUNNING: Mutex<()> = Mutex::const_new(());
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -55,26 +56,39 @@ fn load_settings(app: &AppHandle) -> Settings {
         .unwrap_or_default()
 }
 
-fn save_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(settings_path(app)?, text).map_err(|e| format!("The backup settings couldn't be saved: {e}"))
+/// Read-modify-write of the settings file, one at a time so two changes can't undo each other.
+fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) -> Result<Settings, String> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one_at_a_time = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut settings = load_settings(app);
+    change(&mut settings);
+    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    // Through a temporary file, so a crash mid-write can't leave half a file that reads as defaults.
+    let path = settings_path(app)?;
+    let partial = crate::with_suffix(&path, ".partial");
+    fs::write(&partial, text)
+        .and_then(|_| fs::rename(&partial, &path))
+        .map_err(|e| format!("The backup settings couldn't be saved: {e}"))?;
+    Ok(settings)
 }
 
 fn desktop_folder(app: &AppHandle) -> Result<PathBuf, String> {
     app.path().desktop_dir().map(|dir| dir.join(FOLDER)).map_err(|e| format!("The Desktop folder couldn't be found: {e}"))
 }
 
-/// Backup file names, oldest first (the timestamp in the name sorts by time).
+/// Backup file names, oldest first. Ordered by when the file was written, not by the local time in
+/// its name, which repeats an hour when the clocks go back.
 fn backups_in(folder: &Path) -> Vec<String> {
-    let mut names: Vec<String> = fs::read_dir(folder)
+    let mut names: Vec<(Option<SystemTime>, String)> = fs::read_dir(folder)
         .into_iter()
         .flatten()
         .flatten()
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| name.starts_with(PREFIX) && name.ends_with(".db"))
+        .map(|name| (modified(&folder.join(&name)), name))
         .collect();
     names.sort();
-    names
+    names.into_iter().map(|(_, name)| name).collect()
 }
 
 fn prune(folder: &Path) {
@@ -91,41 +105,69 @@ fn modified(path: &Path) -> Option<SystemTime> {
 /// Whether the database (or its write-ahead log, where recent saves live) changed after `backup`.
 fn changed_since(db: &Path, backup: Option<&Path>) -> bool {
     let Some(saved) = backup.and_then(modified) else { return true };
-    let mut wal = db.as_os_str().to_owned();
-    wal.push("-wal");
-    [modified(db), modified(Path::new(&wal))].into_iter().flatten().any(|time| time > saved)
+    // SQLite creates an empty log whenever the app opens the database; only a written one is a save.
+    let wal_written = fs::metadata(crate::with_suffix(db, "-wal")).ok().filter(|m| m.len() > 0).and_then(|m| m.modified().ok());
+    [modified(db), wal_written].into_iter().flatten().any(|time| time > saved)
 }
 
 /// Copies through a temporary name, so a sync tool never uploads a half-written file.
 fn copy_into(file: &Path, folder: &Path) -> std::io::Result<()> {
     fs::create_dir_all(folder)?;
     let name = file.file_name().unwrap_or_default();
-    let mut partial = name.to_owned();
-    partial.push(".partial");
-    fs::copy(file, folder.join(&partial))?;
-    fs::rename(folder.join(&partial), folder.join(name))
+    let partial = crate::with_suffix(folder.join(name), ".partial");
+    fs::copy(file, &partial).and_then(|_| fs::rename(&partial, folder.join(name))).inspect_err(|_| {
+        let _ = fs::remove_file(&partial);
+    })
 }
 
 /// Saves a copy unless `only_if_changed` and nothing changed since the newest one (so opening and
-/// closing the app, or an idle evening, doesn't push older backups out).
+/// closing the app, or an idle evening, doesn't push older backups out), then the cloud copy.
 async fn backup(app: &AppHandle, only_if_changed: bool) -> Result<(), String> {
     let _one_at_a_time = RUNNING.lock().await;
+    match desktop_backup(app, only_if_changed).await? {
+        Some(file) => cloud_copy(app, &file),
+        None => Ok(()),
+    }
+}
+
+/// The newest Desktop backup, made now unless `only_if_changed` and nothing changed since the last
+/// one. None when there is no database yet. The caller holds RUNNING.
+async fn desktop_backup(app: &AppHandle, only_if_changed: bool) -> Result<Option<PathBuf>, String> {
     let db = crate::database_path(app)?;
     if !db.exists() {
-        return Ok(());
+        return Ok(None);
     }
     let folder = desktop_folder(app)?;
-    if only_if_changed && !changed_since(&db, backups_in(&folder).last().map(|name| folder.join(name)).as_deref()) {
+    let latest = backups_in(&folder).pop().map(|name| folder.join(name));
+    Ok(Some(match latest {
+        Some(file) if only_if_changed && !changed_since(&db, Some(&file)) => file,
+        _ => write_copy(&db, &folder).await?,
+    }))
+}
+
+/// Copies `file` into the cloud folder, if one is set and the file isn't there yet, so a copy that
+/// failed (e.g. while Google Drive wasn't running) is made up by the next backup.
+fn cloud_copy(app: &AppHandle, file: &Path) -> Result<(), String> {
+    let Some(cloud) = load_settings(app).cloud_folder else { return Ok(()) };
+    let cloud = Path::new(&cloud).join(FOLDER);
+    if cloud.join(file.file_name().unwrap_or_default()).exists() {
         return Ok(());
     }
-    let file = write_copy(&db, &folder).await?;
-
-    if let Some(cloud) = load_settings(app).cloud_folder {
-        let cloud = Path::new(&cloud).join(FOLDER);
-        copy_into(&file, &cloud).map_err(|e| format!("Backed up on the Desktop, but not copied to the Google Drive folder: {e}"))?;
-        prune(&cloud);
-    }
+    copy_into(file, &cloud).map_err(|e| format!("Backed up on the Desktop, but not copied to the Google Drive folder: {e}"))?;
+    prune(&cloud);
     Ok(())
+}
+
+/// Before an import replaces the database: a dated copy of it (the cloud copy is best effort, the
+/// next backup makes it up), and no other backup opens the file until the returned guard drops.
+pub(crate) async fn before_import(app: &AppHandle) -> Result<tokio::sync::MutexGuard<'static, ()>, String> {
+    let guard = RUNNING.lock().await;
+    if let Some(file) = desktop_backup(app, false).await? {
+        if let Err(error) = cloud_copy(app, &file) {
+            eprintln!("{error}");
+        }
+    }
+    Ok(guard)
 }
 
 /// Writes a dated copy of `db` into `folder` and drops the oldest copies beyond KEEP.
@@ -143,7 +185,7 @@ async fn write_copy(db: &Path, folder: &Path) -> Result<PathBuf, String> {
     let copy = async {
         let stamp: String = sqlx::query_scalar("SELECT strftime('%Y-%m-%d_%H-%M-%S', 'now', 'localtime')").fetch_one(&mut conn).await?;
         let name = format!("{PREFIX}{stamp}.db");
-        let partial = folder.join(format!("{name}.partial"));
+        let partial = crate::with_suffix(folder.join(&name), ".partial");
         let _ = fs::remove_file(&partial);
         sqlx::query("VACUUM INTO ?").bind(partial.to_string_lossy().into_owned()).execute(&mut conn).await?;
         Ok::<_, sqlx::Error>((name, partial))
@@ -187,9 +229,12 @@ pub async fn set_cloud_backup_folder(app: AppHandle, folder: Option<String>) -> 
             return Err("That folder doesn't exist.".into());
         }
     }
-    let mut settings = load_settings(&app);
-    settings.cloud_folder = folder;
-    save_settings(&app, &settings)?;
+    // Picking the backups folder itself (shown in the dialog) means its parent, not a folder inside it.
+    let folder = folder.map(|dir| match Path::new(&dir) {
+        path if path.file_name().is_some_and(|name| name == FOLDER) => path.parent().map_or(dir.clone(), |p| p.to_string_lossy().into_owned()),
+        _ => dir,
+    });
+    let settings = update_settings(&app, |settings| settings.cloud_folder = folder)?;
     if settings.cloud_folder.is_some() {
         backup(&app, false).await?;
     }
@@ -198,9 +243,7 @@ pub async fn set_cloud_backup_folder(app: AppHandle, folder: Option<String>) -> 
 
 #[tauri::command]
 pub fn mark_backup_guide_seen(app: AppHandle) -> Result<(), String> {
-    let mut settings = load_settings(&app);
-    settings.guide_seen = true;
-    save_settings(&app, &settings)
+    update_settings(&app, |settings| settings.guide_seen = true).map(|_| ())
 }
 
 /// Backs up every INTERVAL while the app is open; a failure is shown in the app ("backup-failed").
@@ -252,6 +295,8 @@ mod tests {
         fs::write(&backup, "copy").unwrap();
         assert!(!changed_since(&db, Some(&backup)));
         std::thread::sleep(Duration::from_millis(50));
+        fs::write(dir.join("fitness-challenge.db-wal"), "").unwrap();
+        assert!(!changed_since(&db, Some(&backup)), "opening the app creates an empty log, not a save");
         fs::write(dir.join("fitness-challenge.db-wal"), "new save").unwrap();
         assert!(changed_since(&db, Some(&backup)), "a save in the write-ahead log counts");
         let _ = fs::remove_dir_all(&dir);

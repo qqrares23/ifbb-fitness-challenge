@@ -32,9 +32,7 @@ export async function pickDatabaseFile(): Promise<string | null> {
  * If the file is rejected nothing changes, and the connection reopens on the next query.
  */
 export async function importDatabase(source: string): Promise<void> {
-  // A dated copy of the current data first: the single before-import file only keeps the original.
-  await backupNow();
-  await closeDb();
+  await closeDb(); // import_database makes a dated backup of the current data first
   await invoke("import_database", { source });
   window.location.reload();
 }

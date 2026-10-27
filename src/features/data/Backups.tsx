@@ -24,10 +24,10 @@ function backupTime(name: string): string {
 export function Backups() {
   const status = useQuery({ queryKey: STATUS_KEY, queryFn: backupStatus });
   const [open, setOpen] = useState(false);
-  const invalidates = [STATUS_KEY];
-  const now = useDbMutation<void>(() => backupNow(), { invalidates, success: "Backup saved." });
-  const setCloud = useDbMutation<string | null>(setCloudBackupFolder, {
-    invalidates,
+  const now = useDbMutation<void>(() => backupNow(), { invalidates: [STATUS_KEY], success: "Backup saved." });
+  // Refetched even on failure: the folder is saved before its first copy, which can still fail.
+  const setCloud = useDbMutation<string | null>((folder) => setCloudBackupFolder(folder).finally(() => status.refetch()), {
+    invalidates: [],
     success: (folder) => (folder ? "Google Drive backups are set up. A first copy is already there." : "Backups are no longer copied to Google Drive."),
   });
 
