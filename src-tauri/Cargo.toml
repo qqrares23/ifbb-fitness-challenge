@@ -24,7 +24,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 # Local judging server: serves a mobile page + JSON API over the LAN (see judge_server.rs).
 axum = "0.8"
-tokio = { version = "1", features = ["net", "sync"] }
+tokio = { version = "1", features = ["net", "sync", "time"] }
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

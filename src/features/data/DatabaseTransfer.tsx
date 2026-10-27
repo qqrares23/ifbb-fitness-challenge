@@ -54,7 +54,7 @@ export function DatabaseTransfer() {
         open={importing !== null}
         onOpenChange={(open) => !open && setImporting(null)}
         title="Import this database?"
-        description={`All data in the app (athletes, categories, exercises, competitions and results) will be replaced by "${importing?.split(/[\\/]/).pop() ?? ""}". The current data is kept as a backup and can be restored if the import goes wrong.`}
+        description={`All data in the app (athletes, categories, exercises, competitions and results) will be replaced by "${importing?.split(/[\\/]/).pop() ?? ""}". A dated copy of the current data is saved to the backups folder first.`}
         confirmLabel="Import and replace"
         destructive
         onConfirm={() => importing && void runImport(importing)}

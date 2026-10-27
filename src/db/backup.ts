@@ -32,6 +32,8 @@ export async function pickDatabaseFile(): Promise<string | null> {
  * If the file is rejected nothing changes, and the connection reopens on the next query.
  */
 export async function importDatabase(source: string): Promise<void> {
+  // A dated copy of the current data first: the single before-import file only keeps the original.
+  await backupNow();
   await closeDb();
   await invoke("import_database", { source });
   window.location.reload();
@@ -39,6 +41,31 @@ export async function importDatabase(source: string): Promise<void> {
 
 export function hasDatabaseBackup(): Promise<boolean> {
   return invoke<boolean>("has_database_backup");
+}
+
+// Automatic backups (src-tauri/src/backup.rs): dated copies on the Desktop, optionally also in a
+// folder that Google Drive for desktop uploads.
+
+export interface BackupStatus {
+  /** Desktop folder the copies go to. */
+  folder: string;
+  /** Second folder every copy also goes to, if set up. */
+  cloudFolder: string | null;
+  /** The Google Drive set-up guide was closed once (it opens by itself until then). */
+  guideSeen: boolean;
+  /** File name of the newest backup. */
+  latest: string | null;
+}
+
+export const backupStatus = () => invoke<BackupStatus>("backup_status");
+export const backupNow = () => invoke<BackupStatus>("backup_now");
+export const setCloudBackupFolder = (folder: string | null) => invoke<BackupStatus>("set_cloud_backup_folder", { folder });
+export const markBackupGuideSeen = () => invoke<void>("mark_backup_guide_seen");
+
+/** Asks for a folder; null if cancelled. */
+export async function pickFolder(): Promise<string | null> {
+  const path = await open({ multiple: false, directory: true });
+  return typeof path === "string" ? path : null;
 }
 
 /** Puts back the database from before the last import, then reloads. */
