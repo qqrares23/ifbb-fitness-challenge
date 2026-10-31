@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addCategoriesFromLibrary, deleteCategory, setCategoryUsesStationSet, updateCategoryRules } from "@/db/categories";
 import {
@@ -11,6 +12,7 @@ import {
   type CompetitionStatus,
 } from "@/db/competitions";
 import { addEntries, addTeamEntry, deleteEntry, setEntryBib, setEntryCategory } from "@/db/entries";
+import { judgeServerStatus } from "@/db/hosting";
 import { queryKeys } from "@/db/queryKeys";
 import { clearResults, listResults, type RecordedResults } from "@/db/results";
 import { setScore } from "@/db/scores";
@@ -71,9 +73,27 @@ export function useCategoryMutations() {
   };
 }
 
-export function useCompetitionResults(competition: Pick<Competition, "id" | "kind">, enabled: boolean) {
-  // Poll while results are shown so writes from judges hosted on the network appear here too.
-  return useQuery({ queryKey: queryKeys.competitionResults(competition.id), queryFn: () => listResults(competition), enabled, refetchInterval: enabled ? 3000 : false });
+export function useCompetitionResults(competition: Pick<Competition, "id" | "kind" | "status">, enabled: boolean) {
+  const queryClient = useQueryClient();
+  const { id, status } = competition;
+  const hosting = useQuery({ queryKey: queryKeys.judgeServer, queryFn: judgeServerStatus }).data?.running;
+  // Poll while judges hosted on the network can write, so their results appear here too. Not while
+  // a field has focus or a save is under way: re-ranking moves rows, which could take the focus away.
+  // (Rows also hold still while a field is typed in, see useHeldWhileTyping, whatever brings new results.)
+  // shortcut: a field left focused also holds back phone results, until it loses focus; compare typed text with the saved value if that ever matters.
+  useEffect(() => {
+    if (status !== "running" || !hosting) return;
+    const refresh = () => void queryClient.invalidateQueries({ queryKey: queryKeys.competitionResults(id), exact: true });
+    const timer = setInterval(() => {
+      if (document.activeElement instanceof HTMLInputElement || queryClient.isMutating() > 0) return;
+      refresh();
+    }, 3000);
+    return () => {
+      clearInterval(timer);
+      refresh(); // what the phones saved since the last poll
+    };
+  }, [queryClient, id, status, hosting]);
+  return useQuery({ queryKey: queryKeys.competitionResults(id), queryFn: () => listResults(competition), enabled });
 }
 
 export function useResultMutations(competitionId: number) {

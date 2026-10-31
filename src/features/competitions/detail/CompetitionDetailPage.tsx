@@ -12,9 +12,10 @@ import { Trash2Icon } from "@/components/icons/trash-2";
 import { useIconAnimation } from "@/components/icons/animated";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
+import { useHeldWhileTyping } from "@/components/shared/CommitInput";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { QueryState } from "@/components/shared/QueryState";
+import { QueryState, RefreshFailed } from "@/components/shared/QueryState";
 import type { CompetitionSetup } from "@/db/competitions";
 import { formatDate } from "@/lib/dates";
 import { CompetitionFormDialog } from "../CompetitionFormDialog";
@@ -56,14 +57,19 @@ type PendingAction = "start" | "finish" | "reopen" | "restart" | "clearResults" 
 function CompetitionDetail({ setup }: { setup: CompetitionSetup }) {
   const locked = setup.competition.status !== "draft";
   const resultsQuery = useCompetitionResults(setup.competition, locked);
+  const recorded = useHeldWhileTyping(resultsQuery.data);
   // Setup is shown as soon as it loads; results only matter once the competition has started.
-  if (locked && resultsQuery.status !== "success") return <QueryState query={resultsQuery}>{() => null}</QueryState>;
+  if (locked && !resultsQuery.data) return <QueryState query={resultsQuery}>{() => null}</QueryState>;
   return (
-    <CompetitionView
-      setup={setup}
-      results={resultsQuery.data ? competitionResults(setup, resultsQuery.data) : null}
-      entryIdsWithResults={entriesWithResults(resultsQuery.data)}
-    />
+    <>
+      {locked && <RefreshFailed query={resultsQuery} />}
+      <CompetitionView
+        setup={setup}
+        results={recorded ? competitionResults(setup, recorded) : null}
+        resultsStale={locked && resultsQuery.isRefetchError}
+        entryIdsWithResults={entriesWithResults(recorded)}
+      />
+    </>
   );
 }
 
@@ -73,16 +79,18 @@ function finishWarning(results: CompetitionResults): string {
   const plural = missing !== 1;
   return results.kind === "speed_fit"
     ? `${missing} athlete${plural ? "s have" : " has"} no time and will be listed without a place. Results will be locked.`
-    : `${missing} station result${plural ? "s are" : " is"} still empty and will count as 0. Results will be locked.`;
+    : `${missing} station result${plural ? "s are" : " is"} still empty and will count as 0; an athlete with no reps at all is listed without a place. Results will be locked.`;
 }
 
 interface CompetitionViewProps {
   setup: CompetitionSetup;
   results: CompetitionResults | null;
+  /** The last refresh failed, so `results` may be missing some: not fit for official exports. */
+  resultsStale: boolean;
   entryIdsWithResults: ReadonlySet<number>;
 }
 
-function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionViewProps) {
+function CompetitionView({ setup, results, resultsStale, entryIdsWithResults }: CompetitionViewProps) {
   const navigate = useNavigate();
   const { competition, stationSets, categories, entries } = setup;
   const { setStatus, clearResults, remove } = useCompetitionMutations();
@@ -134,7 +142,7 @@ function CompetitionView({ setup, results, entryIdsWithResults }: CompetitionVie
           <AnimatedButton icon={RotateCCWIcon} variant="outline" onClick={() => setPending("reopen")}>
             Reopen
           </AnimatedButton>
-          <ExportButtons setup={setup} results={results} />
+          {!resultsStale && <ExportButtons setup={setup} results={results} />}
         </>
       )}
     </>

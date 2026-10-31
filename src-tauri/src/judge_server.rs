@@ -6,12 +6,14 @@
 //! truth (results only while `running`, kind-isolation, value ranges), so this server does not
 //! re-validate — a rejected write surfaces as HTTP 400 with the database's message.
 
-use std::net::{IpAddr, UdpSocket};
+use std::collections::HashMap;
+use std::hash::{BuildHasher, RandomState};
+use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::path::Path;
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -26,6 +28,10 @@ use tokio::sync::oneshot;
 /// The judging page and API listen here on every network interface.
 const PORT: u16 = 8080;
 
+/// Different wrong codes one device may try before it has to wait.
+const MAX_WRONG_CODES: u32 = 10;
+const LOCKOUT: Duration = Duration::from_secs(60);
+
 /// Managed Tauri state: the running server, if any.
 #[derive(Default)]
 pub struct JudgeServer(pub Mutex<Option<Running>>);
@@ -33,23 +39,37 @@ pub struct JudgeServer(pub Mutex<Option<Running>>);
 pub struct Running {
     code: String,
     url: String,
+    other_urls: Vec<String>,
+    pool: SqlitePool,
     shutdown: oneshot::Sender<()>,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JudgeServerStatus {
     running: bool,
     url: Option<String>,
+    /// This computer's other network addresses, for when `url` isn't reachable (e.g. a VPN is on).
+    other_urls: Vec<String>,
     code: Option<String>,
 }
 
 impl JudgeServerStatus {
     fn stopped() -> Self {
-        Self { running: false, url: None, code: None }
+        Self { running: false, url: None, other_urls: Vec::new(), code: None }
     }
     fn of(r: &Running) -> Self {
-        Self { running: true, url: Some(r.url.clone()), code: Some(r.code.clone()) }
+        Self { running: true, url: Some(r.url.clone()), other_urls: r.other_urls.clone(), code: Some(r.code.clone()) }
     }
+}
+
+/// Wrong codes from one device. A phone still polling with an old code repeats the same one, so
+/// only a different code counts: that phone doesn't lock itself out of typing the new one.
+#[derive(Default)]
+struct WrongCodes {
+    count: u32,
+    last: String,
+    locked_until: Option<Instant>,
 }
 
 /// Shared with every request handler. `SqlitePool` is cheap to clone (an `Arc` inside).
@@ -57,6 +77,7 @@ impl JudgeServerStatus {
 struct ApiState {
     pool: SqlitePool,
     code: String,
+    wrong_codes: Arc<Mutex<HashMap<IpAddr, WrongCodes>>>,
 }
 
 #[tauri::command]
@@ -67,40 +88,49 @@ pub async fn start_judge_server(app: AppHandle) -> Result<JudgeServerStatus, Str
 
     let pool = open_pool(&crate::database_path(&app)?).await?;
     let code = generate_code();
-    let ip = lan_ip().ok_or("Couldn't find this computer's network address.")?;
-    let url = format!("http://{ip}:{PORT}");
+    let interfaces = local_ip_address::list_afinet_netifas().unwrap_or_default().into_iter().map(|(_, ip)| ip);
+    let mut urls = lan_ips(routed_ip(), interfaces).into_iter().map(|ip| format!("http://{ip}:{PORT}"));
+    let url = urls.next().ok_or("Couldn't find this computer's network address.")?;
+    let other_urls: Vec<String> = urls.collect();
 
     let router = Router::new()
         .route("/", get(index))
         .route("/api/state", get(get_state))
         .route("/api/score", post(post_score))
         .route("/api/time", post(post_time))
-        .with_state(ApiState { pool, code: code.clone() });
+        .with_state(ApiState { pool: pool.clone(), code: code.clone(), wrong_codes: Arc::default() });
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", PORT))
         .await
         .map_err(|e| format!("Couldn't start hosting on port {PORT}: {e}"))?;
     let (shutdown, rx) = oneshot::channel::<()>();
     tauri::async_runtime::spawn(async move {
-        let _ = axum::serve(listener, router)
+        let _ = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
             .with_graceful_shutdown(async {
                 let _ = rx.await;
             })
             .await;
     });
 
-    let running = Running { code, url, shutdown };
+    let running = Running { code, url, other_urls, pool, shutdown };
     let status = JudgeServerStatus::of(&running);
     *app.state::<JudgeServer>().0.lock().unwrap() = Some(running);
     Ok(status)
 }
 
 #[tauri::command]
-pub fn stop_judge_server(app: AppHandle) -> JudgeServerStatus {
-    if let Some(running) = app.state::<JudgeServer>().0.lock().unwrap().take() {
-        let _ = running.shutdown.send(()); // best effort; the task stops on the next poll
-    }
+pub async fn stop_judge_server(app: AppHandle) -> JudgeServerStatus {
+    stop(&app).await;
     JudgeServerStatus::stopped()
+}
+
+/// Stops hosting and closes the server's connections, so the database file can be replaced next.
+pub(crate) async fn stop(app: &AppHandle) {
+    let running = app.state::<JudgeServer>().0.lock().unwrap().take();
+    if let Some(running) = running {
+        let _ = running.shutdown.send(()); // best effort; the task stops on the next poll
+        running.pool.close().await;
+    }
 }
 
 #[tauri::command]
@@ -127,22 +157,61 @@ async fn open_pool(db_path: &Path) -> Result<SqlitePool, String> {
 /// A 6-digit gate shown to the organiser and typed by judges. Not cryptographic — just keeps
 /// casual devices on the same Wi-Fi from editing results.
 fn generate_code() -> String {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
-    format!("{:06}", nanos % 1_000_000)
+    // RandomState is keyed from the OS's random source. (A clock's low digits aren't random:
+    // Windows ticks every 100 ns, so every code would end in 00.)
+    format!("{:06}", RandomState::new().hash_one(()) % 1_000_000)
 }
 
-/// This computer's primary LAN address, found by asking the OS which interface would reach the
-/// internet (no packet is actually sent).
-fn lan_ip() -> Option<IpAddr> {
+/// The address of the interface that would reach the internet (no packet is actually sent). None
+/// on a network with no gateway, e.g. a router that isn't connected to anything.
+fn routed_ip() -> Option<IpAddr> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
     socket.local_addr().ok().map(|addr| addr.ip())
 }
 
-fn check_code(headers: &HeaderMap, code: &str) -> Result<(), StatusCode> {
-    match headers.get("x-judge-code").and_then(|v| v.to_str().ok()) {
-        Some(sent) if sent == code => Ok(()),
+/// The addresses to offer judges: the routed one first, then every other private IPv4 one.
+fn lan_ips(routed: Option<IpAddr>, interfaces: impl IntoIterator<Item = IpAddr>) -> Vec<IpAddr> {
+    let mut ips: Vec<IpAddr> = routed.into_iter().collect();
+    for ip in interfaces {
+        if matches!(ip, IpAddr::V4(v4) if v4.is_private()) && !ips.contains(&ip) {
+            ips.push(ip);
+        }
+    }
+    ips
+}
+
+/// Lets a request through if it has the code. Each device gets MAX_WRONG_CODES tries, then waits
+/// out LOCKOUT, so nobody on the Wi-Fi can simply try all the codes.
+fn check_code(wrong_codes: &Mutex<HashMap<IpAddr, WrongCodes>>, ip: IpAddr, sent: Option<&str>, code: &str, now: Instant) -> Result<(), StatusCode> {
+    let mut wrong_codes = wrong_codes.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let wrong = wrong_codes.entry(ip).or_default();
+    match wrong.locked_until {
+        Some(until) if until > now => return Err(StatusCode::TOO_MANY_REQUESTS),
+        Some(_) => *wrong = WrongCodes::default(),
+        None => {}
+    }
+    match sent {
+        Some(sent) if sent == code => {
+            wrong_codes.remove(&ip);
+            Ok(())
+        }
+        Some(sent) if !sent.is_empty() && sent != wrong.last => {
+            wrong.count += 1;
+            wrong.last = sent.to_owned();
+            if wrong.count >= MAX_WRONG_CODES {
+                wrong.locked_until = Some(now + LOCKOUT);
+            }
+            Err(StatusCode::UNAUTHORIZED)
+        }
         _ => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+impl ApiState {
+    fn authorize(&self, from: SocketAddr, headers: &HeaderMap) -> Result<(), StatusCode> {
+        let sent = headers.get("x-judge-code").and_then(|v| v.to_str().ok());
+        check_code(&self.wrong_codes, from.ip(), sent, &self.code, Instant::now())
     }
 }
 
@@ -158,8 +227,8 @@ async fn index() -> Html<&'static str> {
     Html(include_str!("../judge/index.html"))
 }
 
-async fn get_state(State(state): State<ApiState>, headers: HeaderMap) -> Result<Json<Value>, StatusCode> {
-    check_code(&headers, &state.code)?;
+async fn get_state(State(state): State<ApiState>, ConnectInfo(from): ConnectInfo<SocketAddr>, headers: HeaderMap) -> Result<Json<Value>, StatusCode> {
+    state.authorize(from, &headers)?;
     let competitions = running_competitions(&state.pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json!({ "competitions": competitions })))
 }
@@ -174,9 +243,9 @@ struct ScoreBody {
     reps: Option<i64>,
 }
 
-async fn post_score(State(state): State<ApiState>, headers: HeaderMap, Json(body): Json<ScoreBody>) -> Response {
-    if check_code(&headers, &state.code).is_err() {
-        return StatusCode::UNAUTHORIZED.into_response();
+async fn post_score(State(state): State<ApiState>, ConnectInfo(from): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<ScoreBody>) -> Response {
+    if let Err(status) = state.authorize(from, &headers) {
+        return status.into_response();
     }
     // Mirrors db/scores.ts setScore: delete on null, else insert-or-update.
     let result = match body.reps {
@@ -211,9 +280,9 @@ struct TimeBody {
     time_ms: Option<i64>,
 }
 
-async fn post_time(State(state): State<ApiState>, headers: HeaderMap, Json(body): Json<TimeBody>) -> Response {
-    if check_code(&headers, &state.code).is_err() {
-        return StatusCode::UNAUTHORIZED.into_response();
+async fn post_time(State(state): State<ApiState>, ConnectInfo(from): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<TimeBody>) -> Response {
+    if let Err(status) = state.authorize(from, &headers) {
+        return status.into_response();
     }
     // Mirrors db/speedFitTimes.ts setTime.
     let result = match body.time_ms {
@@ -259,7 +328,7 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
     let categories = tagged(
         pool,
         &format!(
-            "SELECT competition_id AS owner, id, name, age_group AS ageGroup, level, \
+            "SELECT competition_id AS owner, id, name, age_group AS ageGroup, level, format, gender, min_age AS minAge, max_age AS maxAge, \
                 (SELECT json_group_array(set_id) FROM (SELECT set_id FROM category_station_sets WHERE category_id = c.id ORDER BY set_id)) AS stationSetIds \
              FROM categories c WHERE competition_id IN {RUNNING} ORDER BY id"
         ),
@@ -268,19 +337,27 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
             json!({
                 "id": r.get::<i64, _>("id"),
                 "name": r.get::<String, _>("name"),
-                "ageGroup": r.get::<Option<String>, _>("ageGroup").unwrap_or_default(),
-                "level": r.get::<Option<String>, _>("level").unwrap_or_default(),
+                "ageGroup": r.get::<String, _>("ageGroup"),
+                "level": r.get::<String, _>("level"),
+                "format": r.get::<String, _>("format"),
+                "gender": r.get::<String, _>("gender"),
+                "minAge": r.get::<Option<i64>, _>("minAge"),
+                "maxAge": r.get::<Option<i64>, _>("maxAge"),
                 "stationSetIds": set_ids.and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or_else(|| json!([])),
             })
         },
     )
     .await?;
 
-    // A couple or team is named by all its athletes, in order (entries.athlete_id is only the first).
+    // A couple or team is named by all its athletes, in order (entries.athlete_id is only the first),
+    // and shows each of their countries once, like the app.
     let entries = tagged(
         pool,
         &format!(
-            "SELECT e.competition_id AS owner, e.id, e.category_id AS categoryId, e.bib_number AS bibNumber, a.country, \
+            "SELECT e.competition_id AS owner, e.id, e.category_id AS categoryId, e.bib_number AS bibNumber, \
+                COALESCE((SELECT group_concat(country, ' / ') FROM (SELECT x.country \
+                            FROM entry_members m JOIN athletes x ON x.id = m.athlete_id WHERE m.entry_id = e.id \
+                            GROUP BY x.country ORDER BY MIN(m.position))), a.country) AS country, \
                 COALESCE((SELECT group_concat(name, ' / ') FROM (SELECT x.last_name || ' ' || x.first_name AS name \
                             FROM entry_members m JOIN athletes x ON x.id = m.athlete_id WHERE m.entry_id = e.id ORDER BY m.position)), \
                          a.last_name || ' ' || a.first_name) AS name \
@@ -360,4 +437,73 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
             value
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lan_ips_put_the_routed_address_first_and_keep_only_other_private_ones() {
+        let ip = |text: &str| text.parse::<IpAddr>().unwrap();
+        let interfaces = [ip("127.0.0.1"), ip("192.168.1.5"), ip("10.8.0.2"), ip("8.8.4.4"), ip("fe80::1")];
+        assert_eq!(lan_ips(Some(ip("10.8.0.2")), interfaces), [ip("10.8.0.2"), ip("192.168.1.5")]);
+        assert_eq!(lan_ips(None, interfaces), [ip("192.168.1.5"), ip("10.8.0.2")], "no gateway");
+    }
+
+    #[test]
+    fn different_wrong_codes_lock_a_device_out_for_a_while() {
+        let wrong_codes = Mutex::default();
+        let phone: IpAddr = "192.168.1.9".parse().unwrap();
+        let other: IpAddr = "192.168.1.10".parse().unwrap();
+        let now = Instant::now();
+        let check = |ip: IpAddr, sent: &str, at: Instant| check_code(&wrong_codes, ip, Some(sent), "123456", at);
+
+        for _ in 0..50 {
+            assert_eq!(check(phone, "111111", now), Err(StatusCode::UNAUTHORIZED), "an old code repeated doesn't count");
+        }
+        assert_eq!(check(phone, "123456", now), Ok(()));
+        for guess in 0..MAX_WRONG_CODES {
+            assert_eq!(check(phone, &format!("{guess:06}"), now), Err(StatusCode::UNAUTHORIZED));
+        }
+        assert_eq!(check(phone, "123456", now), Err(StatusCode::TOO_MANY_REQUESTS), "even the right code waits");
+        assert_eq!(check(other, "123456", now), Ok(()), "other devices aren't affected");
+        assert_eq!(check(phone, "123456", now + LOCKOUT), Ok(()));
+    }
+
+    #[test]
+    fn a_teams_countries_read_in_member_order_each_once() {
+        tauri::async_runtime::block_on(async {
+            let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+            for migration in crate::migrations() {
+                sqlx::raw_sql(migration.sql).execute(&pool).await.unwrap();
+            }
+            // Athlete ids deliberately don't follow the member order.
+            sqlx::raw_sql(
+                "INSERT INTO athletes (id, first_name, last_name, date_of_birth, sex, country) VALUES
+                   (7, 'A', 'A', '2000-01-01', 'male', 'ROU'), (3, 'B', 'B', '2000-01-01', 'male', 'HUN'),
+                   (5, 'C', 'C', '2000-01-01', 'male', 'ROU'), (1, 'D', 'D', '2000-01-01', 'male', 'BGR');
+                 INSERT INTO competitions (id, name, date, kind) VALUES (1, 'Cup', '2026-01-01', 'speed_fit');
+                 INSERT INTO categories (id, competition_id, name, gender, format) VALUES (1, 1, 'Teams', 'male', 'team');
+                 INSERT INTO entries (id, competition_id, category_id, athlete_id, bib_number) VALUES (1, 1, 1, 7, 1);
+                 INSERT INTO entry_members (entry_id, athlete_id, position) VALUES (1, 7, 1), (1, 3, 2), (1, 5, 3), (1, 1, 4);
+                 UPDATE competitions SET status = 'running' WHERE id = 1;",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            let competitions = running_competitions(&pool).await.unwrap();
+            assert_eq!(competitions[0]["entries"][0]["country"], "ROU / HUN / BGR");
+        });
+    }
+
+    #[test]
+    fn codes_have_six_digits_and_all_of_them_vary() {
+        let codes: Vec<String> = (0..50).map(|_| generate_code()).collect();
+        assert!(codes.iter().all(|c| c.len() == 6 && c.bytes().all(|b| b.is_ascii_digit())));
+        for position in 0..6 {
+            let digits: std::collections::HashSet<u8> = codes.iter().map(|c| c.as_bytes()[position]).collect();
+            assert!(digits.len() > 1, "digit {position} never changes");
+        }
+    }
 }

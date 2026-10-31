@@ -24,7 +24,9 @@ A desktop app for running IFBB competitions **fully offline**. Organisers:
 4. **export / import the whole database** to move everything to another computer.
 
 All data lives in one SQLite file (`fitness-challenge.db`) in the OS app-data folder for the
-identifier `org.ifbb.fitnesschallenge`. There is no server, no network access and no user accounts.
+identifier `org.ifbb.fitnesschallenge`. There are no user accounts and nothing goes to the internet.
+The one exception to "offline" is optional: **Host judging** serves a page to phones on the local
+network, so judges can record results (see §5).
 
 ---
 
@@ -76,7 +78,7 @@ identifier `org.ifbb.fitnesschallenge`. There is no server, no network access an
 | `src/engine/` | nothing outside itself | `db`, React, UI |
 | `src/db/` | `engine` types, `lib/errors` | React, features |
 | `src/features/` | everything below | other features' internals (sharing hooks like `useAthletes` is fine) |
-| `src/export/` | `db` types, `engine`, `features/competitions/standings` types, `lib` | React |
+| `src/export/` | `db` types, `engine`, `features/competitions/standings` (pure), `lib` | React |
 | `src/components/` | `lib`, `engine` (formatting), `ui` | `db`, features |
 
 ### Core design principles
@@ -113,7 +115,7 @@ src/
   features/
     athletes/     page, form dialog, hooks, validateAthlete (+test)
     exercises/    page, form dialog, hooks
-    categories/   category library page, form dialog, hooks, validateCategory (+test)
+    categories/   category library page, form dialog, hooks, validateSubgroup (+test)
     competitions/ list page, form dialog, badges, permissions, readiness, standings, hooks
       detail/     CompetitionDetailPage + Stations/Categories/Entries panels + add dialogs
       results/    ResultsPanel, RepsGrid, TimesTable, OverallTable, AthleteCell, PlaceBadge,
@@ -144,12 +146,28 @@ src/
     `<destination>.partial` (a complete, consistent copy, whatever is in the write-ahead log or
     being read on another pooled connection), then it is renamed over `destination`;
   - `import_database(source)`: checks the SQLite file header, makes a dated backup (below), copies
-    the current database to `fitness-challenge.before-import.db` (only if none is there yet, so a
-    second import can't bury the original), removes stale `-wal`/`-shm` files and copies `source` in.
-    The app closes its connection first (`closeDb`) and reloads after, which runs any migrations an
-    older export still needs;
+    `source` next to the database, stops hosting judging (its connections must not outlive the
+    file), copies the current database to `fitness-challenge.before-import.db`, removes stale
+    `-wal`/`-shm` files and moves the copy of `source` in. The app wraps this in `replaceDatabaseFile`: its connection is
+    closed first, queries meanwhile wait, and it reloads after, which runs any migrations an older
+    export still needs;
   - `has_database_backup` / `restore_database_backup`: offered on the startup error screen
-    (`DatabaseGate`) when an imported database won't open.
+    (`DatabaseGate`) when an imported database won't open. Restoring moves the backup back, and
+    first sets the database it replaces aside as `fitness-challenge.before-restore.db`.
+    `discard_database_backup` removes the backup once the database has opened, so a later,
+    unrelated failure to open never offers to throw away the work done since.
+
+**LAN judging** (`judge_server.rs`, `judge/index.html`, UI in `features/data/HostJudging.tsx`): an
+axum server on port 8080 of every interface, using its own `sqlx` pool on the same file (WAL lets
+the two coexist). It serves one self-contained phone page and a JSON API; the triggers and CHECKs
+validate its writes as they do the app's. The sidebar shows the address (the interface that routes
+to the internet, then this computer's other private addresses) and a random 6-digit access code,
+sent as `X-Judge-Code`. A device is locked out for a minute after 10 different wrong codes. It is
+plain HTTP, so the code only keeps out casual devices on the Wi-Fi. The page polls every 3 s, and
+while hosting the app polls the results of a running competition too (not while a field has focus or
+a save is under way). The page keeps results the laptop hasn't confirmed in memory, shows them over
+polled values, and sends failed ones again after each poll. The page ports `parseDuration` / `formatDuration` and category naming;
+`consistency.test.ts` compares the naming with `lib/labels.ts`.
 
 **Automatic backups** (`backup.rs`, UI in `features/data/Backups.tsx`): `VACUUM INTO` a dated
 `fitness-challenge-YYYY-MM-DD_HH-MM-SS.db` in `Desktop\IFBB Fitness Challenge backups` when the app
@@ -355,13 +373,16 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
 `db/queryKeys.ts` defines a small hierarchy of query keys:
 
 ```
-["athletes"]  ["exercises"]  ["categoryLibrary", kind]
+["athletes"]  ["exercises"]  ["categoryLibrary", federation, kind]
 ["competitions"]                    list with counts
 ["competitions", id]                CompetitionSetup (competition + stationSets + categories + entries)
 ["competitions", id, "results"]     RecordedResults
 ```
 
-Only this window writes to the DB, so queries never go stale on their own (`staleTime: Infinity`).
+Only this window writes the setup, so queries never go stale on their own (`staleTime: Infinity`).
+Judges on the network can write results, so `useCompetitionResults` polls while hosting a running
+competition. Results on screen hold still while a field is typed in (`useHeldWhileTyping`). If a
+refresh fails, `RefreshFailed` says so, and results can't be exported until one works.
 Every write goes through **`useDbMutation(fn, { invalidates, success })`** (`hooks/useDbMutation.ts`):
 
 - on success it invalidates the listed roots (prefix match) and optionally shows a success toast;
@@ -389,7 +410,7 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 | `ageOn(dob, date)` | **year(date) − year(dob)**. Month and day are ignored, so an athlete keeps one age for the whole calendar year. Throws on malformed dates. |
 | `eligibilityProblems(athlete, rules, competitionDate)` | User-facing reasons (gender mismatch, below min, above max; bounds inclusive). Empty = eligible. |
 | `assignPlaces(sorted, compare)` | Standard competition ranking **1, 1, 3**: items that compare equal share a place. |
-| `rankCategory(entries, stationNumbers, scores)` | Fitness Challenge. Sums reps (a missing station counts as 0 but sets `complete = false`) and sorts descending. Equal totals are split by reps on the last station, then the one before it, and so on; only athletes equal on every station share a place. The stable sort keeps ties in input order (the caller passes bib order). Scores for unknown entries or stations are ignored. |
+| `rankCategory(entries, stationNumbers, scores)` | Fitness Challenge. Sums reps (a missing station counts as 0 but sets `complete = false`) and sorts descending. Equal totals are split by reps on the last station, then the one before it, and so on; only athletes equal on every station share a place. Athletes with no result at all come last. The stable sort keeps ties in input order (the caller passes bib order). Scores for unknown entries or stations are ignored. |
 | `rankByTime(entries, times)` | Speed Fit. Fastest first, ties share a place, athletes with no time come last with `place = null`. |
 | `parseDuration(text)` | Accepts `83.4`, `1:23.45`, `01:23`, `1:02:03,5` (`.` or `,`, up to 2 decimals). Only the largest unit written may exceed 59. Must be > 0 and ≤ `MAX_TIME_MS`. Returns `undefined` if invalid. |
 | `formatDuration(ms)` | `m:ss.cc`, or `h:mm:ss.cc` from one hour. Round-trips with `parseDuration`. |
@@ -518,6 +539,7 @@ exportResults(format, setup, results, logos)
   │     Fitness Challenge: Nr Crt | Athlete Name | Country | [Club] | <stations of its set> | Total | Placement
   │       (a table per set; with several sets also "Overall": <total per set> | Total | Placement)
   │     Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
+  │     (An athlete with no result at all has no Placement, as on the screens.)
   │     (Club only when someone in the category has one, and never in IFBB Fitness Challenge
   │      categories; "Athlete Name" reads "Couple" / "Team" there, with "A / B" names and countries)
   ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a bold, centred header
@@ -582,7 +604,7 @@ is missing. Use `tauri dev`.
 **Tests** cover only pure modules (plus `src/consistency.test.ts`, which checks values that must
 match across Rust, SQL and TypeScript: database URL, migration registration, version, limits): `engine.test.ts`, `standings.test.ts`, `permissions.test.ts`,
 `readiness.test.ts`, `standingsTable.test.ts` (tables, CSV and file names), `validateAthlete.test.ts`
-and `validateCategory.test.ts`. The SQL triggers and the React components have no automated tests.
+and `validateSubgroup.test.ts`. `cargo test` covers the Rust side's backups and access-code rules. The SQL triggers and the React components have no automated tests.
 Exercise those manually in `tauri dev`.
 
 **Resetting data**: delete `fitness-challenge.db` from the app-data folder (on Windows,
@@ -649,7 +671,7 @@ call `saveFile()` from `exportResults.ts`.
   one definition; `src/consistency.test.ts` fails if they drift.
 - **Lifecycle triggers repeat the same status lookup** in each trigger. That's the SQLite idiom;
   copy an existing trigger when adding a rule.
-- **Single window, single writer** is assumed (`staleTime: Infinity`). Opening a second window or
+- **Single window** is assumed for everything except results (`staleTime: Infinity`). Opening a second window or
   editing the DB externally would show stale data until something invalidates the cache.
 - **Age rule** is year-based by design (IFBB convention), not an exact birthday calculation.
 - **Speed Fit times** are stored at hundredth-second precision. `parseDuration` rejects three or

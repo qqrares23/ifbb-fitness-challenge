@@ -66,8 +66,17 @@
       const SEL_KEY = "judgeSel";
       let data = null; // last /api/state payload
       let sel = loadSel(); // { compId, catId, setId, station }
-      let structureKey = ""; // changes when the chosen comp/category/set/station changes
+      let structureKey = ""; // changes when the chosen comp/category/set/station or its athletes change
       let navKey = ""; // changes when the pickers' options or selection change
+      let lastPoll = 0, newestShown = 0; // an older answer arriving late must not replace a newer one
+      let gatePinned = false; // the judge opened the code screen: a working poll must not close it
+      const MAX_REPS = 9999; // db/scores.ts
+      // Results the laptop hasn't confirmed, by field: { path, body, text, okMsg, failed, sending }. Fields
+      // show these over the polled value, and failed ones are sent again after each poll, whatever is on screen.
+      // shortcut: kept in memory, so reloading the page drops them; use localStorage if phones reload mid-outage.
+      const unsaved = new Map();
+      const scoreField = (entryId, setId, stationNumber) => `score:${entryId}:${setId}:${stationNumber}`;
+      const timeField = (entryId) => `time:${entryId}`;
 
       function loadSel() {
         try { return JSON.parse(localStorage.getItem(SEL_KEY)) || {}; } catch { return {}; }
@@ -90,10 +99,16 @@
           headers: { "Content-Type": "application/json", "X-Judge-Code": code, ...(options && options.headers) },
         });
         if (res.status === 401) { showGate(); throw new Error("unauthorized"); }
+        if (res.status === 429) {
+          showGate();
+          document.getElementById("gate-err").textContent = "Too many wrong codes. Wait a minute and try again.";
+          throw new Error("unauthorized");
+        }
         return res;
       }
 
       async function refresh() {
+        const poll = ++lastPoll;
         let res;
         try {
           res = await api("/api/state");
@@ -101,10 +116,58 @@
           if (e.message !== "unauthorized") toast("Can't reach the laptop. Retrying…", true);
           return;
         }
-        if (!res.ok) return;
-        data = await res.json();
-        hideGate();
+        if (!res.ok) { toast("The laptop couldn't read the results. Retrying…", true); return; }
+        const fresh = await res.json();
+        if (poll < newestShown) return;
+        newestShown = poll;
+        for (const c of fresh.competitions) c.categories = namedCategories(c.categories);
+        data = fresh;
+        if (!gatePinned) hideGate();
         render();
+        for (const [field, save] of unsaved) {
+          if (save.failed && !save.sending) send(field, save.path, save.body, save.text, save.okMsg, true);
+        }
+      }
+
+      // --- Category names (port of src/lib/labels.ts, so phones read like the app; consistency.test.ts compares them) ---
+      const SEX_WORDS = { male: /\b(men|male|man)\b/i, female: /\b(women|female|woman)\b/i, mixed: /\bmixed\b/i };
+      const SEX_NAMES = { male: "Men", female: "Women", mixed: "Mixed" };
+      const FORMAT_WORDS = { individual: /(?!)/, couple: /\b(couples?|pairs?)\b/i, team: /\bteams?\b/i };
+      const FORMAT_NAMES = { individual: "", couple: "Couple", team: "Team" };
+      function compactAgeRange({ minAge, maxAge }) {
+        if (minAge !== null && maxAge !== null) return minAge === maxAge ? `${minAge}` : `${minAge}–${maxAge}`;
+        if (minAge !== null) return `${minAge}+`;
+        if (maxAge !== null) return `up to ${maxAge}`;
+        return "";
+      }
+      function mentions(text, phrase) {
+        const words = (value) => ` ${value.replace(/\s*[-‐-―]\s*/g, "–").toLowerCase().split(/\s+/).filter(Boolean).join(" ")} `;
+        return phrase.trim() !== "" && words(text).includes(words(phrase));
+      }
+      function subgroupName(ageGroup, rules) {
+        const range = compactAgeRange(rules);
+        return [
+          ageGroup.trim(),
+          SEX_WORDS[rules.gender].test(ageGroup) ? "" : SEX_NAMES[rules.gender],
+          FORMAT_WORDS[rules.format].test(ageGroup) ? "" : FORMAT_NAMES[rules.format],
+          mentions(ageGroup, range) ? "" : range,
+        ].filter(Boolean).join(" ");
+      }
+      function categoryName(ageGroup, rules, level) {
+        const subgroup = subgroupName(ageGroup, rules);
+        return !level || mentions(ageGroup, level) ? subgroup : `${subgroup} · ${level}`;
+      }
+      // --- End of the port ---
+
+      // Named and ordered like listCategories in src/db/categories.ts: each sub-group's levels together.
+      function namedCategories(categories) {
+        const groups = new Map();
+        for (const k of categories) {
+          const key = k.ageGroup ? JSON.stringify([k.ageGroup, k.format, k.gender, k.minAge, k.maxAge]) : `name:${k.name}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(k.ageGroup ? { ...k, name: categoryName(k.ageGroup, k, k.level) } : k);
+        }
+        return [...groups.values()].flat();
       }
 
       // --- Time helpers (port of src/engine/time.ts) ---
@@ -170,31 +233,25 @@
         }
         saveSel();
 
-        // Only rebuild the pickers when their options or selection change, so a poll refresh
+        // Only rebuild the pickers when their options, labels or selection change, so a poll refresh
         // doesn't close a dropdown the judge is using.
-        const nav = JSON.stringify([
-          comps().map((x) => x.id),
-          c.id,
-          categoriesOf(c).map((x) => x.id),
-          cat && cat.id,
-          fitness ? setsOf(c, cat).map((x) => x.id) : null,
-          set && set.id,
-          fitness && set ? set.stations.map((s) => s.stationNumber) : null,
-          sel.station,
-        ]);
+        const nav = navHtml(c, cat, fitness, set);
         if (nav !== navKey) {
           navKey = nav;
-          navEl.innerHTML = navHtml(c, cat, fitness, set);
+          navEl.innerHTML = nav;
           wireNav();
         }
 
-        const key = [c.id, cat && cat.id, fitness, set && set.id, station && station.stationNumber].join("|");
-        if (key !== structureKey) {
+        // Rebuilt for another station or when the athletes change (a late entry), but not under the
+        // field the judge is typing in: the next poll after they leave it catches up.
+        const rows = rowsHtml(c, cat, fitness, set, station);
+        const key = [c.id, cat && cat.id, fitness, set && set.id, station && station.stationNumber, rows].join("|");
+        if (key !== structureKey && !rowsEl.contains(document.activeElement)) {
           structureKey = key;
-          rowsEl.innerHTML = rowsHtml(c, cat, fitness, set, station);
+          rowsEl.innerHTML = rows;
           wireRows(c, fitness, set, station);
         }
-        applyValues(c, fitness, set, station);
+        if (key === structureKey) applyValues(c, fitness, set, station);
       }
 
       function selectHtml(id, label, options, selected) {
@@ -245,15 +302,23 @@
       function wireRows(c, fitness, set, station) {
         document.querySelectorAll("#rows input").forEach((input) => {
           const entryId = Number(input.dataset.entry);
-          input.addEventListener("change", () => (fitness ? commitScore(input, entryId, set.id, station.stationNumber) : commitTime(input, entryId)));
+          const commit = () => (fitness ? commitScore(input, entryId, set.id, station.stationNumber) : commitTime(input, entryId));
+          input.addEventListener("change", commit);
         });
       }
 
       // Refresh saved values without disturbing the field the judge is typing in.
       function applyValues(c, fitness, set, station) {
         document.querySelectorAll("#rows input").forEach((input) => {
-          if (document.activeElement === input) return;
           const entryId = Number(input.dataset.entry);
+          const save = unsaved.get(fitness ? scoreField(entryId, set.id, station.stationNumber) : timeField(entryId));
+          if (save && save.failed) input.classList.add("invalid");
+          if (document.activeElement === input) return;
+          if (save) {
+            input.value = save.text;
+            input.classList.toggle("invalid", save.failed);
+            return;
+          }
           if (fitness) {
             const score = c.scores.find((s) => s.entryId === entryId && s.setId === set.id && s.stationNumber === station.stationNumber);
             input.value = score ? String(score.reps) : "";
@@ -268,8 +333,9 @@
       async function commitScore(input, entryId, setId, stationNumber) {
         const raw = input.value.trim();
         const reps = raw === "" ? null : Number(raw);
-        if (reps !== null && (!Number.isInteger(reps) || reps < 0)) { input.classList.add("invalid"); return; }
-        await send(input, "/api/score", { entryId, setId, stationNumber, reps }, "Reps saved");
+        if (reps !== null && (!/^\d+$/.test(raw) || reps > MAX_REPS)) { input.classList.add("invalid"); toast(`Reps must be a whole number from 0 to ${MAX_REPS}.`, true); return; }
+        input.classList.remove("invalid");
+        await send(scoreField(entryId, setId, stationNumber), "/api/score", { entryId, setId, stationNumber, reps }, raw, "Reps saved");
       }
 
       async function commitTime(input, entryId) {
@@ -279,17 +345,26 @@
           timeMs = parseDuration(raw);
           if (timeMs === undefined) { input.classList.add("invalid"); toast("That is not a valid time.", true); return; }
         }
-        await send(input, "/api/time", { entryId, timeMs }, "Time saved");
+        input.classList.remove("invalid");
+        await send(timeField(entryId), "/api/time", { entryId, timeMs }, raw, "Time saved");
       }
 
-      async function send(input, path, body, okMsg) {
-        input.classList.remove("invalid");
+      // `retry` keeps a failed field red until the laptop has the result.
+      async function send(field, path, body, text, okMsg, retry = false) {
+        const save = { path, body, text, okMsg, failed: retry, sending: true };
+        unsaved.set(field, save);
         try {
           const res = await api(path, { method: "POST", body: JSON.stringify(body) });
-          if (res.ok) { toast(okMsg); refresh(); }
-          else { input.classList.add("invalid"); toast(await res.text(), true); refresh(); }
+          if (unsaved.get(field) !== save) return; // typed again meanwhile: the newer save decides
+          unsaved.delete(field);
+          // A refused result won't be accepted later either, so the field goes back to what is saved.
+          toast(res.ok ? okMsg : await res.text(), !res.ok);
+          refresh();
         } catch (e) {
           if (e.message !== "unauthorized") toast("Couldn't save. Check the connection.", true);
+          save.failed = true;
+          save.sending = false;
+          render();
         }
       }
 
@@ -305,11 +380,17 @@
       function hideGate() { document.getElementById("gate").classList.add("hidden"); }
       function submitCode() {
         const val = document.getElementById("gate-input").value.trim();
-        if (val) { localStorage.setItem(CODE_KEY, val); refresh(); }
+        if (val) localStorage.setItem(CODE_KEY, val);
+        gatePinned = false; // nothing typed: closes again if the saved code still works
+        refresh();
       }
       document.getElementById("gate-submit").addEventListener("click", submitCode);
       document.getElementById("gate-input").addEventListener("keydown", (e) => { if (e.key === "Enter") submitCode(); });
-      document.getElementById("change-code").addEventListener("click", showGate);
+      document.getElementById("change-code").addEventListener("click", () => {
+        gatePinned = true;
+        showGate();
+        document.getElementById("gate-err").textContent = "";
+      });
 
       // --- Start ---
       if (!localStorage.getItem(CODE_KEY)) showGate();

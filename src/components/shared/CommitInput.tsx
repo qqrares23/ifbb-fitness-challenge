@@ -1,8 +1,34 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { formatDuration, parseDuration } from "@/engine";
+import { parseWholeNumber } from "@/lib/numbers";
 import { cn } from "@/lib/utils";
+
+/** How many fields hold text typed since they were entered. */
+let fieldsBeingTyped = 0;
+const typingListeners = new Set<() => void>();
+
+function changeFieldsBeingTyped(by: number) {
+  fieldsBeingTyped += by;
+  typingListeners.forEach((listener) => listener());
+}
+
+function subscribeToTyping(listener: () => void) {
+  typingListeners.add(listener);
+  return () => void typingListeners.delete(listener);
+}
+
+/**
+ * `latest`, held at its last value while someone is typing in a field. Results that re-rank the
+ * table would move the row under them, and a moved field can blur and save half a number.
+ */
+export function useHeldWhileTyping<T>(latest: T): T {
+  const typing = useSyncExternalStore(subscribeToTyping, () => fieldsBeingTyped > 0);
+  const held = useRef(latest);
+  if (!typing) held.current = latest;
+  return held.current;
+}
 
 type ParseResult<T> = { value: T } | { error: string };
 
@@ -32,6 +58,12 @@ export function CommitInput<T>(props: CommitInputProps<T>) {
 function CommitField<T>({ value, format, parse, onCommit, allowEmpty = false, className, ...rest }: CommitInputProps<T>) {
   const saved = value === null ? "" : format(value);
   const [text, setText] = useState(saved);
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    if (!typing) return;
+    changeFieldsBeingTyped(1);
+    return () => changeFieldsBeingTyped(-1);
+  }, [typing]);
   const revert = () => setText(saved);
   const save = (next: T | null) => void Promise.resolve(onCommit(next)).catch(revert);
 
@@ -58,9 +90,15 @@ function CommitField<T>({ value, format, parse, onCommit, allowEmpty = false, cl
       {...rest}
       className={cn("h-8 text-center tabular-nums transition-shadow", className)}
       value={text}
-      onChange={(e) => setText(e.target.value)}
+      onChange={(e) => {
+        setText(e.target.value);
+        setTyping(true);
+      }}
       onFocus={(e) => e.currentTarget.select()}
-      onBlur={commit}
+      onBlur={() => {
+        setTyping(false);
+        commit();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") {
@@ -84,8 +122,8 @@ export function CommitNumberInput({ min, max, ...props }: WrapperProps<number> &
       {...props}
       format={String}
       parse={(text) => {
-        const n = Number(text);
-        return Number.isInteger(n) && n >= min && n <= max ? { value: n } : { error: `Enter a whole number from ${min} to ${max}.` };
+        const n = parseWholeNumber(text);
+        return n !== undefined && n >= min && n <= max ? { value: n } : { error: `Enter a whole number from ${min} to ${max}.` };
       }}
     />
   );

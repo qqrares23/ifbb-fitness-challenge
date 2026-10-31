@@ -14,6 +14,7 @@ import { AthleteFormDialog } from "@/features/athletes/AthleteFormDialog";
 import { useAthletes } from "@/features/athletes/useAthletes";
 import { countryName } from "@/lib/countries";
 import { describeCategoryRules, listName, SEX_LABELS } from "@/lib/labels";
+import { parseWholeNumber } from "@/lib/numbers";
 import { filterBySearch } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { useEntryMutations } from "../useCompetitions";
@@ -84,7 +85,7 @@ function AddEntriesForm({ setup, initialCategoryId, onDone }: AddEntriesFormProp
     : chosen.map((athlete) => ({ id: athlete.id, label: listName(athlete), owner: `athlete ${athlete.id}`, existing: existingNumber.get(athlete.id) }));
   const manualNumbers = numberRows.map((row) => {
     const text = numbering === "manual" && row.existing === undefined ? (typedNumbers[row.id] ?? "").trim() : "";
-    return text === "" ? null : Number(text);
+    return text === "" ? null : (parseWholeNumber(text) ?? NaN);
   });
   const numberErrors = numberRows.map((row, i) => {
     const n = manualNumbers[i];

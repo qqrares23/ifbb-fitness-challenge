@@ -96,6 +96,15 @@ fn prune(folder: &Path) {
     for name in &names[..names.len().saturating_sub(KEEP)] {
         let _ = fs::remove_file(folder.join(name));
     }
+    // Left by a copy that failed or a crash; no copy is running now (the caller holds RUNNING).
+    let partials = fs::read_dir(folder).into_iter().flatten().flatten().filter(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        name.starts_with(PREFIX) && name.ends_with(".partial")
+    });
+    for partial in partials {
+        let _ = fs::remove_file(partial.path());
+    }
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
@@ -187,7 +196,10 @@ async fn write_copy(db: &Path, folder: &Path) -> Result<PathBuf, String> {
         let name = format!("{PREFIX}{stamp}.db");
         let partial = crate::with_suffix(folder.join(&name), ".partial");
         let _ = fs::remove_file(&partial);
+        let started = SystemTime::now();
         sqlx::query("VACUUM INTO ?").bind(partial.to_string_lossy().into_owned()).execute(&mut conn).await?;
+        // Dated from before the copy, so a save made while it ran still counts as a change since.
+        let _ = fs::File::options().write(true).open(&partial).and_then(|file| file.set_modified(started));
         Ok::<_, sqlx::Error>((name, partial))
     }
     .await;
@@ -258,6 +270,13 @@ pub fn start_timer(app: AppHandle) {
     });
 }
 
+/// The backup made as the app quits (its window is already gone, so a failure can only be logged).
+pub fn on_exit(app: &AppHandle) {
+    if let Err(error) = tauri::async_runtime::block_on(backup(app, true)) {
+        eprintln!("Backup on close failed: {error}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,11 +295,13 @@ mod tests {
             fs::write(dir.join(format!("{PREFIX}2026-10-{day:02}_12-00-00.db")), "x").unwrap();
         }
         fs::write(dir.join("notes.txt"), "mine").unwrap();
+        fs::write(dir.join(format!("{PREFIX}2026-10-01_12-00-00.db.partial")), "half").unwrap();
         prune(&dir);
         let left = backups_in(&dir);
         assert_eq!(left.len(), KEEP);
         assert_eq!(left.first().unwrap(), &format!("{PREFIX}2026-10-06_12-00-00.db"));
         assert!(dir.join("notes.txt").exists());
+        assert!(!dir.join(format!("{PREFIX}2026-10-01_12-00-00.db.partial")).exists());
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -329,12 +350,5 @@ mod tests {
             let _ = app_conn.close().await;
         });
         let _ = fs::remove_dir_all(&dir);
-    }
-}
-
-/// The backup made as the app quits (its window is already gone, so a failure can only be logged).
-pub fn on_exit(app: &AppHandle) {
-    if let Err(error) = tauri::async_runtime::block_on(backup(app, true)) {
-        eprintln!("Backup on close failed: {error}");
     }
 }

@@ -64,7 +64,15 @@ export function Backups() {
 
   return (
     <>
-      <Button variant="outline" size="sm" className="justify-start" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="justify-start"
+        onClick={() => {
+          setOpen(true);
+          void status.refetch(); // timed backups happen in the background, so "Last backup" may have moved on
+        }}
+      >
         <HardDriveDownload /> Backups
         {data?.cloudFolder && <Cloud className="ml-auto text-gold" />}
       </Button>

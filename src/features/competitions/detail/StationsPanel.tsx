@@ -16,6 +16,7 @@ import type { CompetitionSetup } from "@/db/competitions";
 import type { Exercise } from "@/db/exercises";
 import { MAX_STATIONS, type StationSet } from "@/db/stations";
 import { useExercises } from "@/features/exercises/useExercises";
+import { parseWholeNumber } from "@/lib/numbers";
 import { useStationMutations } from "../useCompetitions";
 
 interface StationsPanelProps {
@@ -87,8 +88,8 @@ function StationSetCard({ set, usedBy, exercises, locked, started }: StationSetC
   const [count, setCountText] = useState(String(set.stations.length));
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState<"shrink" | "delete" | null>(null);
-  const parsedCount = Number(count);
-  const countValid = count.trim() !== "" && Number.isInteger(parsedCount) && parsedCount >= 0 && parsedCount <= MAX_STATIONS;
+  const parsedCount = parseWholeNumber(count) ?? NaN;
+  const countValid = parsedCount <= MAX_STATIONS;
 
   function applyCount(event: FormEvent) {
     event.preventDefault();

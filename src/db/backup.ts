@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { todayIso } from "@/lib/dates";
-import { closeDb, db } from "./client";
+import { db, replaceDatabaseFile } from "./client";
 
 // Moving all data between computers: the whole SQLite file is exported / imported. The file work
 // is done by Rust commands (src-tauri/src/lib.rs), which know where the database lives.
@@ -15,8 +15,13 @@ export async function exportDatabase(): Promise<boolean> {
   // VACUUM INTO writes a complete, consistent copy (including anything still in the write-ahead
   // log, even while another connection is reading) to a fresh file, which then replaces the target.
   const partial = await invoke<string>("prepare_export", { destination });
-  await (await db()).execute("VACUUM INTO $1", [partial]);
-  await invoke("finish_export", { destination });
+  try {
+    await (await db()).execute("VACUUM INTO $1", [partial]);
+    await invoke("finish_export", { destination });
+  } catch (error) {
+    await invoke("prepare_export", { destination }).catch(() => undefined); // clears the half-written copy
+    throw error;
+  }
   return true;
 }
 
@@ -31,15 +36,16 @@ export async function pickDatabaseFile(): Promise<string | null> {
  * reloads the app, which opens it and runs any migrations an older export still needs.
  * If the file is rejected nothing changes, and the connection reopens on the next query.
  */
-export async function importDatabase(source: string): Promise<void> {
-  await closeDb(); // import_database makes a dated backup of the current data first
-  await invoke("import_database", { source });
-  window.location.reload();
+export function importDatabase(source: string): Promise<void> {
+  return replaceDatabaseFile(() => invoke("import_database", { source })); // it makes a dated backup of the current data first
 }
 
 export function hasDatabaseBackup(): Promise<boolean> {
   return invoke<boolean>("has_database_backup");
 }
+
+/** The database opened, so an import before this worked and has nothing left to undo. */
+export const discardDatabaseBackup = () => invoke<void>("discard_database_backup");
 
 // Automatic backups (src-tauri/src/backup.rs): dated copies on the Desktop, optionally also in a
 // folder that Google Drive for desktop uploads.
@@ -67,8 +73,6 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 /** Puts back the database from before the last import, then reloads. */
-export async function restoreDatabaseBackup(): Promise<void> {
-  await closeDb();
-  await invoke("restore_database_backup");
-  window.location.reload();
+export function restoreDatabaseBackup(): Promise<void> {
+  return replaceDatabaseFile(() => invoke("restore_database_backup"));
 }

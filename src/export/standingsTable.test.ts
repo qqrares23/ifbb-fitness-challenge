@@ -38,7 +38,7 @@ describe("resultsTables", () => {
     expect(open!.body).toEqual([
       ["1", "Ana Pop", "ROU", "20", "10", "30", "1"],
       ["2", "Ion Pop", "ROU", "30", "—", "30", "2"], // equal total, fewer reps on the last station
-      ["3", "Eva Pop", "ROU", "—", "—", "0", "3"],
+      ["3", "Eva Pop", "ROU", "—", "—", "0", "—"], // no reps at all: unplaced, as on the screens
     ]);
   });
 
@@ -130,7 +130,7 @@ describe("toCsv", () => {
   });
 
   it("neutralises cells that a spreadsheet would run as a formula", () => {
-    expect(toCsv([["=1+1", "-2", "+x", "@y"]])).toBe("'=1+1,-2,'+x,'@y\r\n");
+    expect(toCsv([["=1+1", "-2", "+x", "@y", "-1+1"]])).toBe("'=1+1,-2,'+x,'@y,'-1+1\r\n");
   });
 });
 

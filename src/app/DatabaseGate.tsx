@@ -3,13 +3,20 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { hasDatabaseBackup, restoreDatabaseBackup } from "@/db/backup";
+import { discardDatabaseBackup, hasDatabaseBackup, restoreDatabaseBackup } from "@/db/backup";
 import { db } from "@/db/client";
 import { errorMessage } from "@/lib/errors";
 
+async function openDatabase() {
+  const connection = await db();
+  // If it fails, the old copy stays until the next start; it is only ever offered if opening fails.
+  void discardDatabaseBackup().catch(() => undefined);
+  return connection;
+}
+
 /** Opens the database (running any pending migrations) before rendering the app. */
 export function DatabaseGate({ children }: { children: ReactNode }) {
-  const { status, error, refetch } = useQuery({ queryKey: ["database"], queryFn: db });
+  const { status, error, refetch } = useQuery({ queryKey: ["database"], queryFn: openDatabase });
   // After an import that won't open, the database from before it can be put back.
   const backup = useQuery({ queryKey: ["database-backup"], queryFn: hasDatabaseBackup, enabled: status === "error" });
 

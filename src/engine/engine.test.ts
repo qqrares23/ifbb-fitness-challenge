@@ -83,6 +83,12 @@ describe("rankCategory", () => {
     expect(rows.map((r) => [r.entry.id, r.place])).toEqual([[2, 1], [3, 2], [1, 3], [4, 3]]);
   });
 
+  it("lists an athlete with no results after one who recorded 0", () => {
+    const rows = rankCategory([{ id: 1 }, { id: 2 }], [1], [score(2, 1, 0)]);
+    expect(rows.map((r) => r.entry.id)).toEqual([2, 1]);
+    expect(rows[0]!.place).toBe(1);
+  });
+
   it("keeps tied rows in input order", () => {
     const rows = rankCategory([{ id: 9 }, { id: 3 }, { id: 5 }], [1], []);
     expect(rows.map((r) => r.entry.id)).toEqual([9, 3, 5]);

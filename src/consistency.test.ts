@@ -4,8 +4,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MAX_REPS } from "@/db/scores";
-import { MAX_TIME_MS } from "@/engine";
+import { MAX_TIME_MS, type CategoryFormat, type CategoryGender } from "@/engine";
 import { MAX_AGE } from "@/features/categories/validateSubgroup";
+import { categoryName } from "@/lib/labels";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const allMigrations = readdirSync("src-tauri/migrations")
@@ -39,5 +40,26 @@ describe("cross-language constants", () => {
     expect(MAX_TIME_MS).toBeLessThan(timeLimit);
     expect(MAX_TIME_MS).toBeGreaterThan(timeLimit - 100);
     expect(allMigrations).toContain(`BETWEEN 0 AND ${MAX_AGE}`);
+    expect(read("src-tauri/judge/index.html")).toContain(`const MAX_REPS = ${MAX_REPS};`);
+  });
+
+  it("names categories the same on the judging page as in the app", () => {
+    const page = read("src-tauri/judge/index.html");
+    const port = page.slice(page.indexOf("--- Category names"), page.indexOf("// --- End of the port"));
+    const onPage = new Function(`//${port}; return categoryName;`)() as typeof categoryName;
+    const rules = (format: CategoryFormat, gender: CategoryGender, minAge: number | null, maxAge: number | null) => ({ format, gender, minAge, maxAge });
+    const samples: Parameters<typeof categoryName>[] = [
+      ["Junior", rules("individual", "male", 14, 23), "Gold"],
+      ["Masters", rules("individual", "female", 40, null), "Bronze"],
+      ["Open", rules("individual", "male", null, null), ""],
+      ["Youth", rules("individual", "mixed", null, 12), ""],
+      ["Kids", rules("team", "female", 10, 10), "Level 2"],
+      ["Juniors Men 16-20", rules("individual", "male", 16, 20), "Gold"],
+      ["Junior Gold", rules("individual", "male", 14, 23), "Gold"],
+      ["Senior", rules("couple", "mixed", 18, null), "Gold"],
+      ["Couples", rules("couple", "mixed", 18, null), ""],
+      ["Teams", rules("team", "male", null, null), ""],
+    ];
+    for (const sample of samples) expect(onPage(...sample)).toBe(categoryName(...sample));
   });
 });

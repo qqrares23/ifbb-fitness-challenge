@@ -9,7 +9,8 @@ import { router } from "./router";
 import "./index.css";
 
 // The database is local and only this window writes to it, so cached data never goes stale
-// on its own — mutations invalidate exactly what they change.
+// on its own — mutations invalidate exactly what they change. (Judges on the network write results
+// too: useCompetitionResults polls for those.)
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false },

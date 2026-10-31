@@ -26,7 +26,7 @@ interface ResultsPanelProps {
 export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [enteringLate, setEnteringLate] = useState(false);
-  // Which ranking of a category with several station sets is shown: a set's index, or "overall".
+  // Which ranking of a category with several station sets is shown: a set's id, or "overall".
   const [view, setView] = useState<{ categoryId: number; part: string } | null>(null);
   // A challenge-neutral summary of each category, so one tab bar serves both challenge types.
   const categories = results.categories.map((c) => ({
@@ -152,7 +152,7 @@ interface FitnessChallengeTablesProps {
   competitionId: number;
   standings: FitnessChallengeStandings;
   editable: boolean;
-  /** A set's index in `standings.sets`, or "overall". */
+  /** A set's id ("0" = the first set), or "overall". */
   part: string;
   onPartChange: (part: string) => void;
 }

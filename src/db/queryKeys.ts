@@ -11,4 +11,5 @@ export const queryKeys = {
   // Nested under the competition so anything that refreshes a competition refreshes its results
   // too, while a single rep / time save refreshes only the results.
   competitionResults: (id: number) => ["competitions", id, "results"],
+  judgeServer: ["judgeServer"],
 } as const;

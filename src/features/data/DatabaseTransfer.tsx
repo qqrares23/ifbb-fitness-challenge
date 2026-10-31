@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,10 +7,12 @@ import { DownloadIcon } from "@/components/icons/download";
 import { AnimatedButton } from "@/components/shared/AnimatedButton";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { exportDatabase, importDatabase, pickDatabaseFile } from "@/db/backup";
+import { queryKeys } from "@/db/queryKeys";
 import { errorMessage } from "@/lib/errors";
 
 /** Export / import the whole database, e.g. to move everything to another computer. */
 export function DatabaseTransfer() {
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
 
@@ -39,6 +42,7 @@ export function DatabaseTransfer() {
     } catch (error) {
       toast.error(`Import failed: ${errorMessage(error)}`);
       setBusy(false);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.judgeServer }); // the import may have stopped hosting first
     }
   }
 

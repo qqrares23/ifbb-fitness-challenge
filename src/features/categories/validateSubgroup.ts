@@ -1,4 +1,5 @@
 import type { CategoryFormat, CategoryGender, CategoryRules } from "@/engine";
+import { parseWholeNumber } from "@/lib/numbers";
 
 /** The sub-group form keeps ages as text so a field can be left empty (= no limit). */
 export interface SubgroupFormValues {
@@ -18,8 +19,8 @@ export const MAX_AGE = 120;
 function parseAge(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  const age = Number(trimmed);
-  return Number.isInteger(age) && age >= 0 && age <= MAX_AGE ? age : undefined;
+  const age = parseWholeNumber(trimmed);
+  return age !== undefined && age <= MAX_AGE ? age : undefined;
 }
 
 export function validateSubgroup(form: SubgroupFormValues): SubgroupValidation {

@@ -3,7 +3,7 @@ import type { Entry } from "@/db/entries";
 import type { Station } from "@/db/stations";
 import { formatDuration } from "@/engine";
 import { entryClubs, entryCountries, entryFullName } from "@/lib/labels";
-import type { CompetitionResults } from "@/features/competitions/standings";
+import { hasReps, type CompetitionResults } from "@/features/competitions/standings";
 
 export interface TableFormat {
   stationHeader: (station: Station) => string;
@@ -71,7 +71,8 @@ export function resultsTables(results: CompetitionResults, format: TableFormat):
         ...athlete.cells(row.entry, index),
         ...columns.map((c) => orMissing(row.perStation.get(c.key)?.toString() ?? null, format)),
         String(row.totalReps),
-        String(row.place),
+        // No result at all: unplaced, as on the screens and as in Speed Fit.
+        hasReps(row) ? String(row.place) : format.missing,
       ]),
     });
     if (sets.length === 0) return [table(null, [], rows)];

@@ -1,9 +1,9 @@
 import type { CompetitionResults } from "@/features/competitions/standings";
 import { resultsTables } from "./standingsTable";
 
-// A leading = + @ makes Excel / Sheets evaluate the cell as a formula. Negative numbers are
-// safe and never occur here anyway, so only a "-" followed by a non-digit is neutralised.
-const FORMULA_START = /^(?:[=+@\t\r]|-(?!\d))/;
+// A leading = + @ makes Excel / Sheets evaluate the cell as a formula. Plain negative numbers are
+// safe and never occur here anyway, so only a "-" starting anything else ("-1+1") is neutralised.
+const FORMULA_START = /^(?:[=+@\t\r]|-(?!\d+(?:\.\d+)?$))/;
 
 function csvCell(value: string): string {
   const safe = FORMULA_START.test(value) ? `'${value}` : value;
