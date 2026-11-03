@@ -71,18 +71,3 @@ CREATE TABLE scores (
   updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (entry_id, station_number)
 );
-
-CREATE TABLE settings (
-  id INTEGER PRIMARY KEY,
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-
-CREATE TABLE users (
-  id          INTEGER PRIMARY KEY,
-  username     TEXT NOT NULL UNIQUE CHECK (length(trim(username)) > 0),
-  password_hash TEXT NOT NULL CHECK (length(password_hash) > 0),
-  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
-  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled'))
-)
-

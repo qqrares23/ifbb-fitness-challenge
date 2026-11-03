@@ -259,6 +259,8 @@ register it in `lib.rs` with the next `version`.
 | 11 | `0011_clubs_and_photos.sql` | `athletes.club`, `exercises.photo` |
 | 12 | `0012_category_multiple_sets.sql` | `category_station_sets`: several station sets per category |
 | 13 | `0013_teams_and_restart.sql` | Couples and teams (`format`, `entry_members`, bib triggers rebuilt), `categories.federation` (backfilled by age group name), restart (running/finished → draft deletes results and late marks) |
+| 14 | `0014_rename_competitions.sql` | A competition can be renamed in any state; date and location stay locked once started |
+| 15 | `0015_end_date.sql` | `competitions.end_date`: last day of a multi-day competition (NULL = one day, `>= date`); editable in any state. `date` stays the first day, ages are counted on it |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
 
@@ -277,7 +279,8 @@ deletes the competition's reps / times and clears `late_entry`; the setup stays.
 
 | Action | draft | running | finished |
 |---|:-:|:-:|:-:|
-| Edit name / date / location | ✅ | ❌ | ❌ |
+| Rename, edit end date | ✅ | ✅ | ✅ |
+| Edit start date / location | ✅ | ❌ | ❌ |
 | Station sets: add, rename, delete; stations: count and exercises (an exercise change keeps reps) | ✅ | ✅ | ❌ |
 | Add category, edit its rules, add / remove its station sets | ✅ | ✅ | ❌ |
 | Remove category (with its entries and results) | ✅ | ✅ | ❌ |
@@ -418,7 +421,7 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 ### 7.6 Competition logic (`src/features/competitions/`)
 
 - **`permissions.ts`**: `competitionPermissions(status)` → `{ editDetails, editSetup, enterResults, clearResults, restart }`
-  (details: draft only; setup = station sets, stations, categories, athletes: until finished;
+  (details = start date and location: draft only, the name and end date can always change; setup = station sets, stations, categories, athletes: until finished;
   results and deleting them: running; restart: once started), plus `canChangeCategory`. These mirror the triggers in §6.3.
 - **`readiness.ts`**: `competitionReadiness(setup)` → `{ blocking, warnings }`, shown in
   `ReadinessCard`. **Start** and **Finish** are disabled while `blocking` is non-empty; once started, the card is
@@ -543,9 +546,12 @@ exportResults(format, setup, results, logos)
   │     (Club only when someone in the category has one, and never in IFBB Fitness Challenge
   │      categories; "Athlete Name" reads "Couple" / "Team" there, with "A / B" names and countries)
   ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a bold, centred header
-  │                      (name, date · location, category) between the left and right logos (PdfLogoDialog: IFBB, another image or none on each side;
+  │                      (name, first – last day · location, category) between the left and right logos (PdfLogoDialog: IFBB, another image or none on each side;
   │                      remembered in localStorage) naming the category once:
-  │                      "<kind> — <categoryTitle> Official Results", then an autoTable,
+  │                      labels.categorySubtitle() = "<kind> — <categoryTitle> Official Results", without "<kind> —"
+  │                      when the title already names it (Speed Fit categories have the level "Speed Fit").
+  │                      drawHeader() keeps the text clear of the logos (shrinks, then wraps a long name) and
+  │                      returns where the table starts. Then an autoTable (Speed Fit's, all fixed widths, centred),
   │                      podium cell colours and a "Page x of y" footer.
   │                      Embeds Noto Sans (pdfAssets) so names like "Łukasz" or "Şahin" render.
   ├ csv.resultsCsv()     one sheet with a Category column; the header row is repeated (after a
@@ -557,6 +563,17 @@ exportResults(format, setup, results, logos)
 
 `exportFileStem()` builds the default file name, e.g. `Cupa României 2026!` →
 `cupa-romaniei-2026-results`.
+
+Two more PDFs (`listsPdf.ts`, tables built in `lists.ts`, header / footer shared with `pdf.ts`; portrait A4,
+logos picked in the same `PdfLogoDialog`). Countries are written out in full ("Romania"), never as codes:
+
+- **Athlete list** (`EntryListButton`, on the competition page in every state, meant for printing before
+  the start): every athlete by surname (Nr, sex, age, country, club, categories; a couple / team is named
+  with its own number), then a page per category with its entries in number order.
+- **Placement by country or club** (`ExportButtons`, once finished): a medal table. Countries / clubs
+  ranked by 1st places across every category, then 2nd, then 3rd; equal counts share a place. A couple
+  or team counts once for each of its countries / clubs; athletes without a club, and IFBB Fitness Challenge categories, don't count for clubs.
+  Everyone who took part is listed.
 
 ---
 

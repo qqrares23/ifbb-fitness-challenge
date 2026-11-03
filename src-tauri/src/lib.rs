@@ -99,6 +99,18 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0013_teams_and_restart.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 14,
+            description: "rename_competitions",
+            sql: include_str!("../migrations/0014_rename_competitions.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 15,
+            description: "end_date",
+            sql: include_str!("../migrations/0015_end_date.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

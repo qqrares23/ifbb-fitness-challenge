@@ -1800,7 +1800,7 @@ dependencies = [
 
 [[package]]
 name = "ifbb-fitness-challenge"
-version = "0.7.4"
+version = "0.7.6"
 dependencies = [
  "axum",
  "local-ip-address",

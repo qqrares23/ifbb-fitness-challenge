@@ -6,7 +6,7 @@ import type { CompetitionStatus } from "@/db/competitions";
  * would fail.
  */
 export interface CompetitionPermissions {
-  /** Name, date and location: only before the start. */
+  /** Start date and location: only before the start. (The name and end date can always change, see 0014 / 0015.) */
   editDetails: boolean;
   /** Station sets, stations, categories and athletes: until the competition is finished. */
   editSetup: boolean;

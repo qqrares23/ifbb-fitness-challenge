@@ -17,7 +17,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState, RefreshFailed } from "@/components/shared/QueryState";
 import type { CompetitionSetup } from "@/db/competitions";
-import { formatDate } from "@/lib/dates";
+import { formatDateRange } from "@/lib/dates";
 import { CompetitionFormDialog } from "../CompetitionFormDialog";
 import { CompetitionKindBadge, CompetitionStatusBadge } from "../CompetitionBadges";
 import { competitionPermissions } from "../permissions";
@@ -28,6 +28,7 @@ import { competitionResults, entriesWithResults, type CompetitionResults } from 
 import { useCompetitionMutations, useCompetitionResults, useCompetitionSetup } from "../useCompetitions";
 import { CategoriesPanel } from "./CategoriesPanel";
 import { EntriesPanel } from "./EntriesPanel";
+import { EntryListButton } from "./EntryListButton";
 import { ReadinessCard } from "./ReadinessCard";
 import { StationsPanel } from "./StationsPanel";
 
@@ -106,11 +107,11 @@ function CompetitionView({ setup, results, resultsStale, entryIdsWithResults }: 
     <>
       <CompetitionKindBadge kind={competition.kind} />
       <CompetitionStatusBadge status={competition.status} />
-      {permissions.editDetails && (
-        <AnimatedButton icon={SquarePenIcon} variant="outline" onClick={() => setEditing(true)}>
-          Edit
-        </AnimatedButton>
-      )}
+      {/* Always available: once started the form locks the start date and location, the name and end date stay editable. */}
+      <AnimatedButton icon={SquarePenIcon} variant="outline" onClick={() => setEditing(true)}>
+        Edit
+      </AnimatedButton>
+      <EntryListButton setup={setup} />
       <AnimatedButton icon={Trash2Icon} iconClassName="text-destructive" variant="outline" aria-label="Delete competition" onClick={() => setPending("delete")} />
       {permissions.clearResults && (
         <AnimatedButton icon={Trash2Icon} iconClassName="text-destructive" variant="outline" onClick={() => setPending("clearResults")}>
@@ -152,7 +153,7 @@ function CompetitionView({ setup, results, resultsStale, entryIdsWithResults }: 
     <>
       <PageHeader
         title={competition.name}
-        description={[formatDate(competition.date), competition.location].filter(Boolean).join(" · ")}
+        description={[formatDateRange(competition.date, competition.endDate), competition.location].filter(Boolean).join(" · ")}
         actions={actions}
       />
 

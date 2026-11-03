@@ -12,7 +12,10 @@ export type CompetitionKind = "fitness_challenge" | "speed_fit";
 export interface Competition {
   id: number;
   name: string;
+  /** The first day: athlete ages are counted on it. */
   date: IsoDate;
+  /** The last day, or null for a one-day competition. */
+  endDate: IsoDate | null;
   location: string;
   kind: CompetitionKind;
   status: CompetitionStatus;
@@ -26,7 +29,7 @@ export interface CompetitionSummary extends Competition {
   entryCount: number;
 }
 
-export type CompetitionInput = Pick<Competition, "name" | "date" | "location">;
+export type CompetitionInput = Pick<Competition, "name" | "date" | "endDate" | "location">;
 
 /** The challenge type is chosen once, at creation. */
 export type NewCompetitionInput = CompetitionInput & Pick<Competition, "kind">;
@@ -40,10 +43,11 @@ export interface CompetitionSetup {
   entries: Entry[];
 }
 
-const COLUMNS = "id, name, date, location, kind, status";
+const COLUMNS = "id, name, date, end_date AS endDate, location, kind, status";
 
 function values(input: CompetitionInput) {
-  return [input.name.trim(), input.date, input.location.trim()];
+  // A last day equal to the first is a one-day competition.
+  return [input.name.trim(), input.date, input.endDate && input.endDate !== input.date ? input.endDate : null, input.location.trim()];
 }
 
 export async function listCompetitions(): Promise<CompetitionSummary[]> {
@@ -74,14 +78,14 @@ export async function getCompetitionSetup(id: number): Promise<CompetitionSetup 
 /** Returns the new competition's id. */
 export async function createCompetition(input: NewCompetitionInput): Promise<number> {
   const result = await (await db()).execute(
-    "INSERT INTO competitions (name, date, location, kind) VALUES ($1, $2, $3, $4)",
+    "INSERT INTO competitions (name, date, end_date, location, kind) VALUES ($1, $2, $3, $4, $5)",
     [...values(input), input.kind],
   );
   return result.lastInsertId!;
 }
 
 export async function updateCompetition({ id, ...input }: CompetitionInput & { id: number }): Promise<void> {
-  await (await db()).execute("UPDATE competitions SET name = $1, date = $2, location = $3 WHERE id = $4", [...values(input), id]);
+  await (await db()).execute("UPDATE competitions SET name = $1, date = $2, end_date = $3, location = $4 WHERE id = $5", [...values(input), id]);
 }
 
 export async function deleteCompetition(id: number): Promise<void> {

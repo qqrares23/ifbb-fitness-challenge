@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import ifbbLogo from "@/assets/ifbb-logo.png";
 import { Button } from "@/components/ui/button";
@@ -12,17 +12,21 @@ interface PdfLogoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onExport: (logos: PdfLogos) => void;
+  title?: string;
+  /** More choices for this PDF, shown above the logos. */
+  children?: ReactNode;
 }
 
 /** Picks the logos for the PDF header (IFBB, a custom image, or none, on each side) before exporting. */
-export function PdfLogoDialog({ open, onOpenChange, onExport }: PdfLogoDialogProps) {
+export function PdfLogoDialog({ open, onOpenChange, onExport, title = "PDF logos", children }: PdfLogoDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>PDF logos</DialogTitle>
-          <DialogDescription>Choose the logo for each side of the results header. Your choice is remembered for next time.</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Choose the logo for each side of the header. Your choice is remembered for next time.</DialogDescription>
         </DialogHeader>
+        {children}
         {open && <LogoForm onCancel={() => onOpenChange(false)} onExport={onExport} />}
       </DialogContent>
     </Dialog>

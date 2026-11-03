@@ -23,7 +23,7 @@ describe("groupBySubgroup", () => {
 const athlete = { firstName: "A", lastName: "B", dateOfBirth: "2000-01-01", sex: "male", country: "ROU", club: "", lateEntry: false, team: false } as const;
 
 const setup: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "running" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", kind: "fitness_challenge", status: "running" },
   stationSets: [
     { id: 1, name: "Set A", stations: [{ stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" }, { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" }] },
     { id: 2, name: "Set B", stations: [{ stationNumber: 1, exerciseId: 3, exerciseName: "Sit-ups" }] },

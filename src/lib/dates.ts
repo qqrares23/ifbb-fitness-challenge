@@ -13,3 +13,8 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "s
 export function formatDate(value: IsoDate): string {
   return DATE_FORMAT.format(new Date(`${value}T00:00:00Z`));
 }
+
+/** "15 Jun 2000", or "15 Jun 2000 – 17 Jun 2000" when the last day differs from the first. */
+export function formatDateRange(first: IsoDate, last: IsoDate | null): string {
+  return last && last !== first ? `${formatDate(first)} – ${formatDate(last)}` : formatDate(first);
+}

@@ -83,13 +83,13 @@ export function resultsTables(results: CompetitionResults, format: TableFormat):
   });
 }
 
-/** A file-name-safe version of the competition name, e.g. "World Cup 2026" → "world-cup-2026". */
-export function exportFileStem(competitionName: string): string {
+/** A file-name-safe version of the competition name plus `suffix`, e.g. "World Cup 2026" → "world-cup-2026-results". */
+export function exportFileStem(competitionName: string, suffix = "results"): string {
   const slug = competitionName
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return `${slug || "competition"}-results`;
+  return `${slug || "competition"}-${suffix}`;
 }

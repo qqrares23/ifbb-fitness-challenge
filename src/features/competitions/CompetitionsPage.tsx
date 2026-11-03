@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState } from "@/components/shared/QueryState";
-import { formatDate } from "@/lib/dates";
+import { formatDateRange } from "@/lib/dates";
 import { CompetitionFormDialog } from "./CompetitionFormDialog";
 import { ROW_ENTER, staggerStyle } from "@/lib/motion";
 import { CompetitionKindBadge, CompetitionStatusBadge } from "./CompetitionBadges";
@@ -60,7 +60,7 @@ export function CompetitionsPage() {
                           <CompetitionKindBadge kind={c.kind} />
                         </span>
                       </TableCell>
-                      <TableCell>{formatDate(c.date)}</TableCell>
+                      <TableCell>{formatDateRange(c.date, c.endDate)}</TableCell>
                       <TableCell className="text-muted-foreground">{c.location || "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.kind === "speed_fit" ? "—" : c.setCount > 1 ? `${c.stationCount} in ${c.setCount} sets` : c.stationCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.categoryCount}</TableCell>

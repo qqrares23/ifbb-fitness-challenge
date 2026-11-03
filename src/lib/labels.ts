@@ -1,5 +1,5 @@
 import type { Federation } from "@/db/categoryLibrary";
-import type { CompetitionKind } from "@/db/competitions";
+import type { Competition, CompetitionKind } from "@/db/competitions";
 import type { CategoryFormat, CategoryGender, CategoryRules, Sex } from "@/engine";
 
 export const COMPETITION_KIND_LABELS: Record<CompetitionKind, string> = {
@@ -31,7 +31,8 @@ export const entryFullName = (e: Members) => e.members.map(fullName).join(" / ")
 /** "Pop Ana / Pop Ion". */
 export const entryListName = (e: Members) => e.members.map(listName).join(" / ");
 
-const distinct = (values: string[]) => [...new Set(values.filter(Boolean))].join(" / ");
+/** Each value once, empty ones left out: "ROU / HUN". */
+export const distinct = (values: string[]) => [...new Set(values.filter(Boolean))].join(" / ");
 
 /** Each country once: "ROU / HUN". */
 export const entryCountries = (e: Members) => distinct(e.members.map((m) => m.country));
@@ -117,4 +118,15 @@ export function categoryTitle(category: CategoryRules & { name: string; ageGroup
   const subgroup = subgroupName(category.ageGroup, category);
   if (!category.level || mentions(category.ageGroup, category.level)) return subgroup;
   return `${subgroup} ${/\blevel\b/i.test(category.level) ? category.level : `${category.level} Level`}`;
+}
+
+/**
+ * A section's subtitle: "Fitness Challenge — Junior Men 14–23 Gold Level" plus `suffix`. The challenge
+ * isn't named again when the category already names it (Speed Fit categories have the level "Speed Fit").
+ */
+export function categorySubtitle(competition: Pick<Competition, "kind">, category: CategoryRules & { name: string; ageGroup: string; level: string }, suffix = ""): string {
+  const title = categoryTitle(category);
+  const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const kind = COMPETITION_KIND_LABELS[competition.kind];
+  return `${squash(title).includes(squash(kind)) ? title : `${kind} — ${title}`}${suffix}`;
 }

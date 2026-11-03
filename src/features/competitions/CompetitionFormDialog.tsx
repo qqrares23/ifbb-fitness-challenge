@@ -9,6 +9,7 @@ import { COMPETITION_KIND_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useIconAnimation } from "@/components/icons/animated";
 import { ANIMATED_KIND_ICONS } from "./CompetitionBadges";
+import { competitionPermissions } from "./permissions";
 import { useCompetitionMutations } from "./useCompetitions";
 
 const KIND_DESCRIPTIONS: Record<CompetitionKind, string> = {
@@ -40,15 +41,20 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
   const navigate = useNavigate();
   const { create, update } = useCompetitionMutations();
   const { values, set, submitted, onSubmit } = useFormState<NewCompetitionInput>(
-    competition ?? { name: "", date: todayIso(), location: "", kind: "fitness_challenge" },
+    competition ?? { name: "", date: todayIso(), endDate: null, location: "", kind: "fitness_challenge" },
   );
   const errors = {
     name: submitted && !values.name.trim() ? "Name is required." : undefined,
-    date: submitted && !values.date ? "Date is required." : undefined,
+    date: submitted && !values.date ? "Start date is required." : undefined,
+    // ISO dates compare as text.
+    endDate: submitted && values.date && values.endDate && values.endDate < values.date ? "Can't be before the start date." : undefined,
   };
+  // Once started the start date and location are locked: the start date decides every athlete's age (the database enforces this, see 0014).
+  // The name and end date only change what is printed, so they stay editable.
+  const onlyName = competition !== null && !competitionPermissions(competition.status).editDetails;
 
   const handleSubmit = onSubmit(() => {
-    if (!values.name.trim() || !values.date) return;
+    if (!values.name.trim() || !values.date || (values.endDate && values.endDate < values.date)) return;
     void saveAndClose(async () => {
       if (competition) return update.mutateAsync({ ...values, id: competition.id });
       const id = await create.mutateAsync(values);
@@ -71,14 +77,21 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
         <Input id="competition-name" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. IFBB World Cup" autoFocus />
       </FormField>
       <div className="grid grid-cols-2 gap-4">
-        <FormField id="competition-date" label="Date" error={errors.date}>
-          <Input id="competition-date" type="date" value={values.date} onChange={(e) => set("date", e.target.value)} />
+        <FormField id="competition-date" label="Start date" error={errors.date}>
+          <Input id="competition-date" type="date" disabled={onlyName} value={values.date} onChange={(e) => set("date", e.target.value)} />
         </FormField>
-        <FormField id="competition-location" label="Location (optional)">
-          <Input id="competition-location" value={values.location} onChange={(e) => set("location", e.target.value)} />
+        <FormField id="competition-end-date" label="End date (optional)" error={errors.endDate}>
+          <Input id="competition-end-date" type="date" min={values.date} value={values.endDate ?? ""} onChange={(e) => set("endDate", e.target.value || null)} />
         </FormField>
       </div>
-      <p className="text-xs text-muted-foreground">Athlete ages for categories are counted as this date's year minus the year of birth.</p>
+      <FormField id="competition-location" label="Location (optional)">
+        <Input id="competition-location" disabled={onlyName} value={values.location} onChange={(e) => set("location", e.target.value)} />
+      </FormField>
+      <p className="text-xs text-muted-foreground">
+        {onlyName
+          ? "The competition has started, so its start date and location are locked."
+          : "Athlete ages for categories are counted as the start date's year minus the year of birth. Leave the end date empty for a one-day competition."}
+      </p>
       <FormActions onCancel={onDone} submitLabel={competition ? "Save changes" : "Create competition"} saving={create.isPending || update.isPending} />
     </form>
   );

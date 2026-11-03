@@ -15,7 +15,7 @@ const setA: StationSet = {
 const ion = { athleteId: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU", club: "" } as const;
 
 const ready: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "draft" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", kind: "fitness_challenge", status: "draft" },
   stationSets: [setA],
   categories: [{ id: 10, name: "Juniors", format: "individual", gender: "male", minAge: 16, maxAge: 20, ageGroup: "", level: "", federation: null, stationSetIds: [1] }],
   entries: [

@@ -11,7 +11,7 @@ const entry = (id: number, firstName: string, club = ""): Entry => {
 };
 
 const setup: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", location: "", kind: "fitness_challenge", status: "finished" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", kind: "fitness_challenge", status: "finished" },
   stationSets: [
     { id: 1, name: "Set A", stations: [{ stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" }, { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" }] },
     { id: 2, name: "Set B", stations: [{ stationNumber: 1, exerciseId: 3, exerciseName: "Sit-ups" }] },
