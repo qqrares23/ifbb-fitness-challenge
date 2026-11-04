@@ -29,8 +29,9 @@ export function competitionReadiness({ competition, stationSets, categories, ent
   const blocking: string[] = [];
   const warnings: string[] = [];
 
-  // Speed Fit has no stations: one time per athlete for the whole set of exercises.
-  if (competition.kind === "fitness_challenge") {
+  // Only Fitness Challenge categories use stations; Speed Fit has one time per athlete for the whole set of exercises.
+  const fitnessChallenge = categories.filter((c) => c.kind === "fitness_challenge");
+  if (fitnessChallenge.length > 0) {
     if (stationSets.length === 0) blocking.push("Add a station set.");
     for (const set of stationSets) {
       // A competition with one set reads as before: "stations 1, 2", not "Set A stations 1, 2".
@@ -49,9 +50,9 @@ export function competitionReadiness({ competition, stationSets, categories, ent
       for (const [name, numbers] of stationsByExercise) {
         if (numbers.length > 1) warnings.push(`"${name}" is used at ${where}stations ${numbers.join(", ")}.`);
       }
-      if (stationSets.length > 1 && !categories.some((c) => c.stationSetIds.includes(set.id))) warnings.push(`No category uses ${set.name}.`);
+      if (stationSets.length > 1 && !fitnessChallenge.some((c) => c.stationSetIds.includes(set.id))) warnings.push(`No category uses ${set.name}.`);
     }
-    for (const category of categories) {
+    for (const category of fitnessChallenge) {
       if (category.stationSetIds.length === 0) blocking.push(`Pick a station set for "${category.name}".`);
     }
   }

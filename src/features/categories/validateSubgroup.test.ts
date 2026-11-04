@@ -21,8 +21,8 @@ describe("category naming", () => {
   const juniorMen = { format: "individual", gender: "male", minAge: 14, maxAge: 23 } as const;
 
   it("names a competition category after its age group, sub-group and level", () => {
-    expect(categoryName("Junior", juniorMen, "Gold")).toBe("Junior Men 14–23 · Gold");
-    expect(categoryName("Masters", { format: "individual", gender: "female", minAge: 40, maxAge: null }, "Bronze")).toBe("Masters Women 40+ · Bronze");
+    expect(categoryName("Junior", juniorMen, "Gold", "fitness_challenge")).toBe("Junior Men 14–23 · Gold");
+    expect(categoryName("Masters", { format: "individual", gender: "female", minAge: 40, maxAge: null }, "Bronze", "fitness_challenge")).toBe("Masters Women 40+ · Bronze");
   });
 
   it("doesn't repeat what the age group name already says (libraries upgraded from flat categories)", () => {
@@ -37,8 +37,8 @@ describe("category naming", () => {
 
   it("names a sub-group without levels after the sub-group alone, and never repeats the level", () => {
     const openMen = { format: "individual", gender: "male", minAge: null, maxAge: null } as const;
-    expect(categoryName("Open", openMen, "")).toBe("Open Men");
-    expect(categoryName("Junior Gold", juniorMen, "Gold")).toBe("Junior Gold Men 14–23");
+    expect(categoryName("Open", openMen, "", "fitness_challenge")).toBe("Open Men");
+    expect(categoryName("Junior Gold", juniorMen, "Gold", "fitness_challenge")).toBe("Junior Gold Men 14–23");
     expect(categoryTitle({ ...openMen, name: "x", ageGroup: "Open", level: "" })).toBe("Open Men");
     expect(categoryTitle({ ...juniorMen, name: "x", ageGroup: "Juniors Men 14-23 Gold", level: "Gold" })).toBe("Juniors Men 14-23 Gold");
   });
@@ -51,9 +51,14 @@ describe("category naming", () => {
     expect(categoryTitle({ ...base, ageGroup: "", level: "", name: "Open" })).toBe("Open");
   });
 
+  it("names Speed Fit in front, unless the level already does", () => {
+    expect(categoryName("Junior", juniorMen, "Gold", "speed_fit")).toBe("Speed Fit · Junior Men 14–23 · Gold");
+    expect(categoryName("Junior", juniorMen, "SPEEDFIT", "speed_fit")).toBe("Junior Men 14–23 · SPEEDFIT");
+  });
+
   it("names couples and teams, unless the age group already says so", () => {
     const mixedCouple = { format: "couple", gender: "mixed", minAge: 18, maxAge: null } as const;
-    expect(categoryName("Senior", mixedCouple, "Gold")).toBe("Senior Mixed Couple 18+ · Gold");
+    expect(categoryName("Senior", mixedCouple, "Gold", "fitness_challenge")).toBe("Senior Mixed Couple 18+ · Gold");
     expect(subgroupName("Couples", mixedCouple)).toBe("Couples Mixed 18+");
     expect(subgroupName("Open", { format: "team", gender: "female", minAge: null, maxAge: null })).toBe("Open Women Team");
     expect(describeCategoryRules(mixedCouple)).toBe("Couple (2) · Mixed · 18+ years");

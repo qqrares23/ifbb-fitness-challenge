@@ -1,7 +1,4 @@
 import { BicepsFlexed, Timer } from "lucide-react";
-import type { AnimatedIcon } from "@/components/icons/animated";
-import { BicepsFlexedIcon } from "@/components/icons/biceps-flexed";
-import { TimerIcon } from "@/components/icons/timer";
 import { Badge } from "@/components/ui/badge";
 import type { CompetitionKind, CompetitionStatus } from "@/db/competitions";
 import { COMPETITION_KIND_LABELS } from "@/lib/labels";
@@ -31,9 +28,7 @@ export function LateEntryBadge() {
   );
 }
 
-// Static versions for small badges, animated versions for interactive choices.
 const KIND_ICONS = { fitness_challenge: BicepsFlexed, speed_fit: Timer } as const;
-export const ANIMATED_KIND_ICONS: Record<CompetitionKind, AnimatedIcon> = { fitness_challenge: BicepsFlexedIcon, speed_fit: TimerIcon };
 
 export function CompetitionKindBadge({ kind }: { kind: CompetitionKind }) {
   const Icon = KIND_ICONS[kind];

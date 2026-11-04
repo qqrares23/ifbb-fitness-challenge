@@ -7,14 +7,13 @@ export function todayIso(): IsoDate {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-
-/** "2000-06-15" → "15 Jun 2000". Formatted in UTC so the calendar day never shifts. */
+/** "2000-06-15" → "15/06/2000" (day/month/year). Read from the text, so the calendar day never shifts. */
 export function formatDate(value: IsoDate): string {
-  return DATE_FORMAT.format(new Date(`${value}T00:00:00Z`));
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
 }
 
-/** "15 Jun 2000", or "15 Jun 2000 – 17 Jun 2000" when the last day differs from the first. */
+/** "15/06/2000", or "15/06/2000 – 17/06/2000" when the last day differs from the first. */
 export function formatDateRange(first: IsoDate, last: IsoDate | null): string {
   return last && last !== first ? `${formatDate(first)} – ${formatDate(last)}` : formatDate(first);
 }

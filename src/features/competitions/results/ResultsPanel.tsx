@@ -34,13 +34,14 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
     missingResults: c.missingResults,
     athletes: c.rows.length,
     // Speed Fit: one time per athlete. Fitness Challenge: one result per station of each of the category's sets.
-    resultsPerAthlete: "sets" in c ? c.sets.reduce((sum, set) => sum + set.stationSet.stations.length, 0) : 1,
+    resultsPerAthlete: c.kind === "fitness_challenge" ? c.sets.reduce((sum, set) => sum + set.stationSet.stations.length, 0) : 1,
   }));
   const index = Math.max(0, categories.findIndex((c) => c.category.id === categoryId));
   const current = categories[index];
   if (!current) return null;
 
-  const speedFit = results.kind === "speed_fit";
+  const standings = results.categories[index]!;
+  const speedFit = standings.kind === "speed_fit";
   const expected = current.athletes * current.resultsPerAthlete;
 
   // Sub-group → level navigation, so officials can move on as soon as a category is done.
@@ -127,14 +128,14 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
       ) : (
         // Keyed by category so switching tabs plays the entrance animation.
         <div key={current.category.id} className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
-          {results.kind === "speed_fit" ? (
+          {standings.kind === "speed_fit" ? (
             <ExpandableTable title={current.category.name}>
-              <TimesTable competitionId={setup.competition.id} standings={results.categories[index]!} editable={editable} />
+              <TimesTable competitionId={setup.competition.id} standings={standings} editable={editable} />
             </ExpandableTable>
           ) : (
             <FitnessChallengeTables
               competitionId={setup.competition.id}
-              standings={results.categories[index]!}
+              standings={standings}
               editable={editable}
               part={view?.categoryId === current.category.id ? view.part : "0"}
               onPartChange={(part) => setView({ categoryId: current.category.id, part })}

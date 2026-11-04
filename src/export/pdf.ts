@@ -107,18 +107,18 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
       0: { cellWidth: 16 },
       [nameColumn]: { cellWidth: 62 },
       2: { cellWidth: 20 },
-      [placementColumn - 1]: { cellWidth: results.kind === "speed_fit" ? 26 : 18, fontStyle: "bold" },
+      [placementColumn - 1]: { cellWidth: category.kind === "speed_fit" ? 26 : 18, fontStyle: "bold" },
       [placementColumn]: { cellWidth: 22, fontStyle: "bold" },
     };
     let side = MARGIN;
-    if (results.kind === "speed_fit") {
+    if (category.kind === "speed_fit") {
       // No station columns to fill the page, so the (fixed width) table is centred instead.
       if (head.length > 5) columnStyles[3] = { cellWidth: 50 }; // Club
       const width = head.reduce((sum, _, i) => sum + (columnStyles[i]?.cellWidth ?? 0), 0);
       side = (doc.internal.pageSize.getWidth() - width) / 2;
     }
     if (index > 0) doc.addPage();
-    const y = drawHeader(doc, competition, logos, categorySubtitle(competition, category, `${part ? ` · ${part}` : ""} Official Results`));
+    const y = drawHeader(doc, competition, logos, categorySubtitle(category, `${part ? ` · ${part}` : ""} Official Results`));
 
     if (body.length === 0) {
       doc.setFont(PDF_FONT, "normal").setFontSize(10).setTextColor(MUTED).text("No athletes.", MARGIN, y + 4);

@@ -175,8 +175,8 @@ function CategoryEntries({ setup, category, entries, permissions, entryIdsWithRe
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {/* A couple or team only moves to another couple or team category (0013). */}
-                            {setup.categories.filter((c) => c.format === category.format).map((c) => (
+                            {/* A couple or team only moves to another couple or team category (0013), and never between challenges (0016). */}
+                            {setup.categories.filter((c) => c.format === category.format && c.kind === category.kind).map((c) => (
                               <SelectItem key={c.id} value={c.id.toString()}>
                                 {c.name}
                               </SelectItem>

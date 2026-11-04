@@ -20,6 +20,7 @@ export interface SetStandings {
 }
 
 export interface FitnessChallengeStandings extends CategoryResultsBase {
+  kind: "fitness_challenge";
   /** One ranking per station set the category uses, in set order (empty until a set is picked). */
   sets: SetStandings[];
   /**
@@ -33,12 +34,16 @@ export interface FitnessChallengeStandings extends CategoryResultsBase {
 }
 
 export interface SpeedFitStandings extends CategoryResultsBase {
+  kind: "speed_fit";
   rows: TimedRow<Entry>[];
 }
 
-export type CompetitionResults =
-  | { kind: "fitness_challenge"; categories: FitnessChallengeStandings[] }
-  | { kind: "speed_fit"; categories: SpeedFitStandings[] };
+/** Each category is ranked by its own challenge: reps or time. */
+export type CategoryStandings = FitnessChallengeStandings | SpeedFitStandings;
+
+export interface CompetitionResults {
+  categories: CategoryStandings[];
+}
 
 const missingStationResults = (rows: RankedRow<Entry>[]) =>
   rows.reduce((sum, row) => sum + [...row.perStation.values()].filter((reps) => reps === null).length, 0);
@@ -56,19 +61,13 @@ function categoryEntries(setup: CompetitionSetup, category: Category): Entry[] {
  * read from this, so they can never disagree.
  */
 export function competitionResults(setup: CompetitionSetup, recorded: RecordedResults): CompetitionResults {
-  if (recorded.kind === "speed_fit") {
-    return {
-      kind: "speed_fit",
-      categories: setup.categories.map((category) => {
-        const rows = rankByTime(categoryEntries(setup, category), recorded.times);
-        return { category, rows, missingResults: rows.filter((r) => r.timeMs === null).length };
-      }),
-    };
-  }
   return {
-    kind: "fitness_challenge",
-    categories: setup.categories.map((category) => {
+    categories: setup.categories.map((category): CategoryStandings => {
       const entries = categoryEntries(setup, category);
+      if (category.kind === "speed_fit") {
+        const rows = rankByTime(entries, recorded.times);
+        return { kind: "speed_fit", category, rows, missingResults: rows.filter((r) => r.timeMs === null).length };
+      }
       // Each set the category uses is ranked on its own stations and reps. Reps on a set the
       // category no longer uses are kept but not ranked.
       const sets = category.stationSetIds.flatMap((setId) => {
@@ -88,6 +87,7 @@ export function competitionResults(setup: CompetitionSetup, recorded: RecordedRe
             )
           : null;
       return {
+        kind: "fitness_challenge",
         category,
         sets,
         overall,
@@ -104,5 +104,5 @@ export function competitionResults(setup: CompetitionSetup, recorded: RecordedRe
  */
 export function entriesWithResults(recorded: RecordedResults | undefined): ReadonlySet<number> {
   if (!recorded) return new Set();
-  return new Set(recorded.kind === "speed_fit" ? recorded.times.map((t) => t.entryId) : recorded.scores.map((s) => s.entryId));
+  return new Set([...recorded.times.map((t) => t.entryId), ...recorded.scores.map((s) => s.entryId)]);
 }

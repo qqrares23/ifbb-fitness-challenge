@@ -2,7 +2,7 @@ import autoTable from "jspdf-autotable";
 import type { jsPDF } from "jspdf";
 import type { CompetitionSetup } from "@/db/competitions";
 import type { CompetitionResults } from "@/features/competitions/standings";
-import { categorySubtitle, COMPETITION_KIND_LABELS } from "@/lib/labels";
+import { categorySubtitle, competitionTitle } from "@/lib/labels";
 import { athleteListTable, categoryEntriesTable, placementTable, type PlacementGrouping } from "./lists";
 import type { PdfLogos } from "./logos";
 import { drawHeader, finishPdf, MARGIN, MUTED, newPdf, PODIUM_FILLS, TABLE_STYLES } from "./pdf";
@@ -28,10 +28,9 @@ function noteBelowTable(doc: jsPDF, fontSize: number, text: string) {
 export function entryListPdf(setup: CompetitionSetup, logos: PdfLogos): Uint8Array {
   const doc = newPdf("portrait");
   const { competition, categories, entries } = setup;
-  const kind = COMPETITION_KIND_LABELS[competition.kind];
   const leftAligned = (columns: number[]) => Object.fromEntries(columns.map((c) => [c, { halign: "left" as const }]));
 
-  const top = drawHeader(doc, competition, logos, `${kind} — Athletes`);
+  const top = drawHeader(doc, competition, logos, competitionTitle(categories, "Athletes"));
   const athletes = athleteListTable(setup);
   if (athletes.body.length === 0) {
     doc.setFont(PDF_FONT, "normal").setFontSize(10).setTextColor(MUTED).text("No athletes entered yet.", MARGIN, top + 4);
@@ -49,7 +48,7 @@ export function entryListPdf(setup: CompetitionSetup, logos: PdfLogos): Uint8Arr
   // Each category on a page of its own, so each can be handed to its officials.
   for (const category of categories) {
     doc.addPage();
-    const categoryTop = drawHeader(doc, competition, logos, categorySubtitle(competition, category, ` · ${categoryEntriesTable(category, entries).body.length} Athletes`));
+    const categoryTop = drawHeader(doc, competition, logos, categorySubtitle(category, ` · ${categoryEntriesTable(category, entries).body.length} Athletes`));
     const table = categoryEntriesTable(category, entries);
     if (table.body.length === 0) {
       doc.setFont(PDF_FONT, "normal").setFontSize(10).setTextColor(MUTED).text("No athletes in this category.", MARGIN, categoryTop + 4);
@@ -65,8 +64,8 @@ const GROUPING_LABELS: Record<PlacementGrouping, string> = { country: "Country",
 /** After the finish: countries or clubs ranked by their podium places across all categories. Portrait A4. */
 export function placementPdf(setup: CompetitionSetup, results: CompetitionResults, by: PlacementGrouping, logos: PdfLogos): Uint8Array {
   const doc = newPdf("portrait");
-  const { competition } = setup;
-  const top = drawHeader(doc, competition, logos, `${COMPETITION_KIND_LABELS[competition.kind]} — Placement by ${by}`);
+  const { competition, categories } = setup;
+  const top = drawHeader(doc, competition, logos, competitionTitle(categories, `Placement by ${by}`));
 
   const rows = placementTable(results, by);
   if (rows.length === 0) {

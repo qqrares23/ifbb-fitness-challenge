@@ -36,7 +36,7 @@ const STATUS_SUCCESS: Record<CompetitionStatus, string> = {
   // Only reached by restarting.
   draft: "Competition restarted: results deleted, setup kept.",
   // "running" is also reached by reopening a finished competition.
-  running: "Rep entry is open.",
+  running: "Results entry is open.",
   finished: "Competition finished.",
 };
 
@@ -73,7 +73,7 @@ export function useCategoryMutations() {
   };
 }
 
-export function useCompetitionResults(competition: Pick<Competition, "id" | "kind" | "status">, enabled: boolean) {
+export function useCompetitionResults(competition: Pick<Competition, "id" | "status">, enabled: boolean) {
   const queryClient = useQueryClient();
   const { id, status } = competition;
   const hosting = useQuery({ queryKey: queryKeys.judgeServer, queryFn: judgeServerStatus }).data?.running;
@@ -93,7 +93,7 @@ export function useCompetitionResults(competition: Pick<Competition, "id" | "kin
       refresh(); // what the phones saved since the last poll
     };
   }, [queryClient, id, status, hosting]);
-  return useQuery({ queryKey: queryKeys.competitionResults(id), queryFn: () => listResults(competition), enabled });
+  return useQuery({ queryKey: queryKeys.competitionResults(id), queryFn: () => listResults(id), enabled });
 }
 
 export function useResultMutations(competitionId: number) {
@@ -120,7 +120,6 @@ export function useResultMutations(competitionId: number) {
   return {
     setScore: useDbMutation(
       optimistic(setScore, (results, { entryId, setId, stationNumber, reps }) => {
-        if (results.kind !== "fitness_challenge") return results;
         const others = results.scores.filter((s) => !(s.entryId === entryId && s.setId === setId && s.stationNumber === stationNumber));
         return { ...results, scores: reps === null ? others : [...others, { entryId, setId, stationNumber, reps }] };
       }),
@@ -128,7 +127,6 @@ export function useResultMutations(competitionId: number) {
     ),
     setTime: useDbMutation(
       optimistic(setTime, (results, { entryId, timeMs }) => {
-        if (results.kind !== "speed_fit") return results;
         const others = results.times.filter((t) => t.entryId !== entryId);
         return { ...results, times: timeMs === null ? others : [...others, { entryId, timeMs }] };
       }),

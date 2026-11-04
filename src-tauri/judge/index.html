@@ -153,9 +153,13 @@
           mentions(ageGroup, range) ? "" : range,
         ].filter(Boolean).join(" ");
       }
-      function categoryName(ageGroup, rules, level) {
+      function categoryName(ageGroup, rules, level, kind) {
         const subgroup = subgroupName(ageGroup, rules);
-        return !level || mentions(ageGroup, level) ? subgroup : `${subgroup} · ${level}`;
+        return withKind(kind, !level || mentions(ageGroup, level) ? subgroup : `${subgroup} · ${level}`);
+      }
+      const squash = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+      function withKind(kind, text) {
+        return kind === "fitness_challenge" || squash(text).includes("speedfit") ? text : `Speed Fit · ${text}`;
       }
       // --- End of the port ---
 
@@ -163,9 +167,9 @@
       function namedCategories(categories) {
         const groups = new Map();
         for (const k of categories) {
-          const key = k.ageGroup ? JSON.stringify([k.ageGroup, k.format, k.gender, k.minAge, k.maxAge]) : `name:${k.name}`;
+          const key = k.ageGroup ? JSON.stringify([k.kind, k.ageGroup, k.format, k.gender, k.minAge, k.maxAge]) : `name:${k.name}`;
           if (!groups.has(key)) groups.set(key, []);
-          groups.get(key).push(k.ageGroup ? { ...k, name: categoryName(k.ageGroup, k, k.level) } : k);
+          groups.get(key).push(k.ageGroup ? { ...k, name: categoryName(k.ageGroup, k, k.level, k.kind) } : k);
         }
         return [...groups.values()].flat();
       }
@@ -220,7 +224,7 @@
         sel.compId = c.id;
         const cat = category(c);
         if (cat) sel.catId = cat.id;
-        const fitness = c.kind !== "speed_fit";
+        const fitness = !cat || cat.kind !== "speed_fit"; // one competition can mix both challenges
         let set = null, station = null;
         if (fitness) {
           set = stationSet(c, cat);

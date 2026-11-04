@@ -11,7 +11,7 @@ const member = (athleteId: number, firstName: string, country: string, club = ""
 const solo = (id: number, categoryId: number, bib: number, m: ReturnType<typeof member>): Entry => ({ ...m, id, categoryId, bibNumber: bib, lateEntry: false, team: false, members: [m] });
 
 const category = (id: number, name: string, format: Category["format"] = "individual"): Category => ({
-  id, name, format, gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [],
+  id, name, format, gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, kind: "speed_fit", stationSetIds: [],
 });
 
 const ana = member(1, "Ana", "ROU", "CS Dinamo");
@@ -19,7 +19,7 @@ const ion = member(2, "Ion", "HUN");
 const eva = member(3, "Eva", "ROU", "CS Dinamo");
 
 const setup: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", kind: "speed_fit", status: "finished" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", status: "finished" },
   stationSets: [],
   categories: [category(1, "Gold"), category(2, "Silver"), category(3, "Couples", "couple")],
   entries: [
@@ -54,7 +54,7 @@ describe("categoryEntriesTable", () => {
 
 describe("placementTable", () => {
   const results = competitionResults(setup, {
-    kind: "speed_fit",
+    scores: [],
     times: [
       { entryId: 10, timeMs: 60_000 }, // Gold: Ana 1st
       { entryId: 11, timeMs: 70_000 }, //       Ion 2nd
@@ -75,7 +75,7 @@ describe("placementTable", () => {
   });
 
   it("lists everyone who took part, sharing a place on equal counts", () => {
-    const none = competitionResults(setup, { kind: "speed_fit", times: [] });
+    const none = competitionResults(setup, { scores: [], times: [] });
     expect(placementTable(none, "country").map((r) => [r.place, r.name])).toEqual([[1, "Hungary"], [1, "Romania"]]);
   });
 });
@@ -84,16 +84,15 @@ describe("placementTable in IFBB Fitness Challenge", () => {
   it("doesn't credit clubs in IFBB categories, whose results show no clubs", () => {
     const fc: CompetitionSetup = {
       ...setup,
-      competition: { ...setup.competition, kind: "fitness_challenge" },
       stationSets: [{ id: 1, name: "A", stations: [{ stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" }] }],
       categories: [
-        { ...category(1, "IFBB"), federation: "ifbb", stationSetIds: [1] },
-        { ...category(2, "Romania"), federation: "romania", stationSetIds: [1] },
+        { ...category(1, "IFBB"), kind: "fitness_challenge", federation: "ifbb", stationSetIds: [1] },
+        { ...category(2, "Romania"), kind: "fitness_challenge", federation: "romania", stationSetIds: [1] },
       ],
       entries: [solo(10, 1, 1, ana), solo(12, 2, 1, ana)],
     };
     const results = competitionResults(fc, {
-      kind: "fitness_challenge",
+      times: [],
       scores: [{ entryId: 10, setId: 1, stationNumber: 1, reps: 10 }, { entryId: 12, setId: 1, stationNumber: 1, reps: 10 }],
     });
     expect(placementTable(results, "club")).toEqual([{ place: 1, name: "CS Dinamo", gold: 1, silver: 0, bronze: 0 }]);

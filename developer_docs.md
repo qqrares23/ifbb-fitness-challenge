@@ -1,6 +1,6 @@
 # IFBB Fitness Challenge — Developer Documentation
 
-Version 0.7 · Tauri 2 · React 19 · TypeScript · SQLite
+Version 0.8 · Tauri 2 · React 19 · TypeScript · SQLite
 
 This document explains how the app is built and why, so that a new developer can change it safely.
 For a short user-facing overview see `README.md`.
@@ -14,7 +14,7 @@ A desktop app for running IFBB competitions **fully offline**. Organisers:
 1. maintain three libraries: **athletes** (with an optional club), **exercises** (with an optional photo) and
    **categories**: one library per federation (IFBB, Romania) and challenge type, each age group →
    sub-group by type (individual, couple of 2, team of 4), sex and age → optional levels;
-2. create a **competition** of one of two challenge types:
+2. create a **competition** whose categories each have one of two challenge types (a competition can mix them):
    - **Fitness Challenge**: athletes do reps at the stations of their category's station set(s), and the most total reps wins
      (a category on several sets is ranked per set and overall);
    - **Speed Fit**: each athlete gets one time for the whole set of exercises, and the fastest wins;
@@ -66,7 +66,7 @@ network, so judges can record results (see §5).
 └────────┼───────────────────────────────────────────────────────────────────────┘
          │ IPC (@tauri-apps/plugin-sql, plugin-dialog, plugin-fs)
 ┌────────▼──────────────────────── Rust (src-tauri) ─────────────────────────────┐
-│  lib.rs: registers plugins + 13 SQL migrations + database transfer commands    │
+│  lib.rs: registers plugins + 16 SQL migrations + database transfer commands    │
 │  SQLite file: CHECK constraints, FKs, and TRIGGERS enforce the lifecycle rules │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -88,8 +88,8 @@ network, so judges can record results (see §5).
    future one, can bypass them. Trigger `RAISE` messages are written for end users and shown verbatim.
 2. **The UI mirrors those rules** (`permissions.ts`, `readiness.ts`) so it never offers an action
    that would fail. When the two disagree, the DB wins and the error becomes a toast.
-3. **One ranking function per challenge type, used everywhere.** `standings.ts → competitionResults()`
-   feeds the live screens, the results view, the PDF and the CSV, so they can never disagree.
+3. **One ranking path, used everywhere.** `standings.ts → competitionResults()` ranks each category
+   by its own challenge type and feeds the live screens, the results view, the PDF and the CSV, so they can never disagree.
 4. **Pure logic is isolated and tested.** `engine/`, validators, `permissions`, `readiness`, `standings`
    and `standingsTable` have no I/O and are covered by Vitest.
 
@@ -105,7 +105,10 @@ components.json                 shadcn/ui config (style radix-nova, aliases)
 src-tauri/
   tauri.conf.json               Window size, CSP, bundle targets, version
   capabilities/default.json     IPC permissions granted to the window
-  src/lib.rs                    Plugin registration + migration list
+  src/lib.rs                    Plugin registration + migration list + database transfer commands
+  src/backup.rs                 Automatic backups (Desktop, optional cloud folder)
+  src/judge_server.rs           LAN judging server (axum) + its JSON API
+  judge/index.html              Self-contained phone judging page served by judge_server.rs
   src/main.rs                   Binary entry, calls lib::run()
   migrations/000N_*.sql         Schema and lifecycle triggers (append-only)
 src/
@@ -120,7 +123,7 @@ src/
       detail/     CompetitionDetailPage + Stations/Categories/Entries panels + add dialogs
       results/    ResultsPanel, RepsGrid, TimesTable, OverallTable, AthleteCell, PlaceBadge,
                   ExpandableTable, ExportButtons, PdfLogoDialog
-    data/         DatabaseTransfer (export / import the whole database, in the sidebar)
+    data/         sidebar tools: DatabaseTransfer (export / import the whole database), Backups, HostJudging
   export/       exportResults (entry), standingsTable (shared layout), pdf, pdfAssets, logos, csv, saveFile
   components/
     ui/         shadcn primitives (generated, don't hand-edit unless needed)
@@ -128,7 +131,7 @@ src/
     layout/     AppLayout (sidebar + outlet), PageHeader
     shared/     LibraryPage, FormDialog, CommitInput, CheckList, ConfirmDialog, QueryState, …
   hooks/        useDbMutation, useFlipAnimation
-  lib/          countries, dates, errors, images, labels, motion, search, utils
+  lib/          countries, dates, errors, images, labels, motion, numbers, search, utils
   assets/       IFBB logo, Noto Sans fonts (for PDF)
 ```
 
@@ -141,7 +144,7 @@ src/
 - registers `tauri-plugin-sql` with the migration list for `sqlite:fitness-challenge.db` (the plugin
   keeps the file in the app **config** dir, e.g. `%APPDATA%\org.ifbb.fitnesschallenge\`);
 - registers `tauri-plugin-dialog` (native Save-As / Open) and `tauri-plugin-fs` (write the chosen file);
-- defines five commands for moving the database (`src/db/backup.ts` calls them):
+- defines six commands for moving the database (`src/db/backup.ts` calls them):
   - `prepare_export(destination)` / `finish_export(destination)`: the app runs `VACUUM INTO` on
     `<destination>.partial` (a complete, consistent copy, whatever is in the write-ahead log or
     being read on another pooled connection), then it is renamed over `destination`;
@@ -204,8 +207,8 @@ athletes ───────────────┐ (ON DELETE RESTRICT)
 exercises ──┐ (RESTRICT)│
             │           │
 competitions ─┬─< station_sets ─< competition_stations (set_id, station_number) → exercise_id?
-   kind       ├─< categories (copied from the library) ─< category_station_sets >─ station_sets
-   status     └─< entries (athlete, category, bib, late_entry)
+   status     ├─< categories (kind; copied from the library) ─< category_station_sets >─ station_sets
+              └─< entries (athlete, category, bib, late_entry)
                      ├─< entry_members (athlete, position)                      [couple / team]
                      ├─< scores (entry_id, set_id, station_number → station)   [fitness_challenge]
                      └─  speed_fit_times (entry_id PK, time_ms)                 [speed_fit]
@@ -220,11 +223,11 @@ age_groups ─< age_subgroups (sex, ages) ─< category_levels   (library; copie
 | `age_groups` | `federation` ∈ ifbb/romania, `kind` ∈ fitness_challenge/speed_fit (one library per pair), `name` (Junior, Senior, Masters…), UNIQUE (`federation`, `kind`, `name`) NOCASE |
 | `age_subgroups` | `age_group_id` (CASCADE), `format` ∈ individual/couple/team, `gender` ∈ male/female/mixed, `min_age`/`max_age` 0–120 or NULL, min ≤ max. Unique per age group + format + sex + ages (NULL = NULL) |
 | `category_levels` | `subgroup_id` (CASCADE), `name`, UNIQUE (`subgroup_id`, `name`) NOCASE |
-| `competitions` | `name`, `date`, `location`, `status` ∈ draft/running/finished, `kind` ∈ fitness_challenge/speed_fit, `started_at`, `finished_at` |
-| `station_sets` | `competition_id` (CASCADE), `name` ("Set A"…), UNIQUE per competition NOCASE. Fitness Challenge only; a new Fitness Challenge competition gets "Set A" (trigger) |
+| `competitions` | `name`, `date`, `location`, `status` ∈ draft/running/finished, `started_at`, `finished_at`. (`kind` is unused since 0016: the type lives on each category.) |
+| `station_sets` | `competition_id` (CASCADE), `name` ("Set A"…), UNIQUE per competition NOCASE. Used by Fitness Challenge categories only; every new competition gets "Set A" (trigger) |
 | `competition_stations` | PK (`set_id`, `station_number`), `exercise_id` nullable until picked |
-| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules (`format` can never change, trigger), `age_group`, `level` (both empty for pre-0006 categories), `federation` of the library it came from (NULL when unknown). (`station_set_id` is unused since 0012.) UNIQUE (`competition_id`, `name`) |
-| `category_station_sets` | PK (`category_id`, `set_id`), both CASCADE: the station sets a category is scored on. A new category gets the competition's first set (trigger); editable until finished |
+| `categories` | per-competition snapshot of one level: `name` ("Junior Men 14–23 · Gold"), rules (`format` can never change, trigger), `age_group`, `level` (both empty for pre-0006 categories), `federation` of the library it came from (NULL when unknown), `kind` ∈ fitness_challenge/speed_fit (never changes, trigger; Speed Fit names start with "Speed Fit · " unless they already say it, so both types can share a sub-group name). (`station_set_id` is unused since 0012.) UNIQUE (`competition_id`, `name`) |
+| `category_station_sets` | PK (`category_id`, `set_id`), both CASCADE: the station sets a category is scored on. A new Fitness Challenge category gets the competition's first set (trigger); Speed Fit categories get none; editable until finished |
 | `entries` | one row per athlete, couple or team **per category** (an athlete can enter several levels): UNIQUE (`category_id`, `athlete_id`); for a couple / team `athlete_id` is its first member. One bib per athlete per competition, shared by their individual entries; a couple / team has its own bib; no bib is shared otherwise (triggers). An entry only moves to a category of the same format. `late_entry` 0/1 |
 | `entry_members` | PK (`entry_id`, `athlete_id`), `position`: every athlete of a couple / team entry (only on those). At most 2 / 4 (trigger; the app enters exactly that many), and an athlete is in one couple / team per category |
 | `scores` | PK (`entry_id`, `set_id`, `station_number`), `reps` 0–9999. FK (`set_id`, `station_number`) → station, CASCADE: removing a station deletes its reps. Inserts only on a set the entry's category uses; reps on a set it stops using are kept (they come back if it is added again) |
@@ -261,6 +264,7 @@ register it in `lib.rs` with the next `version`.
 | 13 | `0013_teams_and_restart.sql` | Couples and teams (`format`, `entry_members`, bib triggers rebuilt), `categories.federation` (backfilled by age group name), restart (running/finished → draft deletes results and late marks) |
 | 14 | `0014_rename_competitions.sql` | A competition can be renamed in any state; date and location stay locked once started |
 | 15 | `0015_end_date.sql` | `competitions.end_date`: last day of a multi-day competition (NULL = one day, `>= date`); editable in any state. `date` stays the first day, ages are counted on it |
+| 16 | `0016_speed_fit_categories.sql` | `categories.kind`: the challenge type moves from the competition to the category (backfilled from the competition, so old Speed Fit competitions keep working). Reps / times triggers check the category; an entry can't move between challenges; any competition can have stations (old Speed Fit ones get "Set A" unless finished). Old Speed Fit library categories are renamed "Speed Fit · …" to match how they are named now |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
 
@@ -293,7 +297,7 @@ Further invariants:
 
 - an entry's category must belong to the same competition;
 - an entry's athlete and competition never change;
-- stations and scores exist only for Fitness Challenge, and times only for Speed Fit.
+- scores exist only for Fitness Challenge categories, and times only for Speed Fit ones; a category's type never changes, and an entry never moves to a category of the other type.
 
 Cascade deletes still work in every state: during a cascade the parent competition row is already
 gone, so the status sub-selects return NULL and the guards don't fire.
@@ -366,7 +370,7 @@ All of these render inside `AppLayout` (sidebar navigation + animated `<Outlet/>
     multi-row `INSERT`, so it is all-or-nothing, scored on the competition's first station set.
     Later library edits never change a competition's rules.
   - **Status change** (`setCompetitionStatus`): stamps `started_at` (first start only) and `finished_at`.
-- `results.ts` returns a discriminated union `RecordedResults` (`scores` or `times`, depending on `kind`).
+- `results.ts` returns `RecordedResults` with both `scores` and `times` of a competition; each category uses the one its `kind` says.
 - Inputs are validated on the JS side too (e.g. `MAX_REPS`, `MAX_STATIONS = 50`, `MAX_TIME_MS`).
   `MAX_REPS`, `MAX_TIME_MS` and the age bounds mirror SQL `CHECK`s (`consistency.test.ts` guards them);
   `MAX_STATIONS` is a UI-only limit with no SQL backstop.
@@ -442,8 +446,8 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 ### 7.7 Screens
 
 **Categories page** has an IFBB / Romania switch (`FederationPicker`) and Fitness Challenge / Speed Fit
-tabs: one library per pair. `AddCategoriesDialog` has the same federation switch and only offers the
-competition's own challenge type. The page shows a tree: age-group cards → sub-group rows (sex +
+tabs: one library per pair. `AddCategoriesDialog` has the same federation switch and challenge tabs, so one
+competition can take categories from both libraries. The page shows a tree: age-group cards → sub-group rows (sex +
 ages, edited in `SubgroupFormDialog`) → level chips (named in `NameFormDialog`). Levels are optional:
 a sub-group without levels is added to a competition as one category (typical for Speed Fit, often
 sex-only with open ages); it has `age_group` set and `level` empty. Naming helpers live in `lib/labels.ts` (`subgroupName`, `categoryName`,
@@ -618,10 +622,14 @@ npm run tauri build   # installers in src-tauri/target/release/bundle/
 `npm run dev` alone serves the UI in a browser, but every DB call fails there because the Tauri IPC
 is missing. Use `tauri dev`.
 
-**Tests** cover only pure modules (plus `src/consistency.test.ts`, which checks values that must
-match across Rust, SQL and TypeScript: database URL, migration registration, version, limits): `engine.test.ts`, `standings.test.ts`, `permissions.test.ts`,
-`readiness.test.ts`, `standingsTable.test.ts` (tables, CSV and file names), `validateAthlete.test.ts`
-and `validateSubgroup.test.ts`. `cargo test` covers the Rust side's backups and access-code rules. The SQL triggers and the React components have no automated tests.
+**Tests** cover mostly pure modules: `engine.test.ts`, `standings.test.ts`, `permissions.test.ts`,
+`readiness.test.ts`, `standingsTable.test.ts` (tables, CSV and file names), `lists.test.ts` (athlete list and
+placement tables), `labels.test.ts`, `numbers.test.ts`, `validateAthlete.test.ts` and `validateSubgroup.test.ts`.
+`src/consistency.test.ts` checks values that must match across Rust, SQL and TypeScript (database URL,
+migration registration, version, limits, the judging page's category naming), and `db/client.test.ts`
+(with the SQL plugin mocked) checks that queries wait while the database file is replaced. `cargo test`
+covers the Rust side: backups, restore, access codes, network addresses, and one judging-page query run
+against all migrations in memory. The SQL triggers and the React components have no other automated tests.
 Exercise those manually in `tauri dev`.
 
 **Resetting data**: delete `fitness-challenge.db` from the app-data folder (on Windows,
@@ -661,10 +669,10 @@ and a page built on `LibraryPage`. Then add a route in `router.tsx` and a `NAV_I
 
 **Add a challenge type**:
 
-1. Extend the `kind` CHECK (this needs a table rebuild in SQLite) and add a results table with
-   kind-isolation and lifecycle triggers.
+1. Extend the `categories.kind` and `age_groups.kind` CHECKs (this needs a table rebuild in SQLite) and add a
+   results table with kind-isolation and lifecycle triggers.
 2. Add a ranking function in `engine/`.
-3. Extend the unions in `RecordedResults` (`db/results.ts`) and `CompetitionResults` (`standings.ts`).
+3. Extend `RecordedResults` (`db/results.ts`) and the `CategoryStandings` union (`standings.ts`).
 4. Handle the new kind in `resultsTables`, `readiness`, `ResultsPanel` and
    `COMPETITION_KIND_LABELS`.
 

@@ -13,6 +13,7 @@ import { CATEGORY_GENDER_LABELS, formatAgeRange } from "@/lib/labels";
 import { ROW_ENTER, staggerStyle } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { CompetitionPermissions } from "../permissions";
+import { CompetitionKindBadge } from "../CompetitionBadges";
 import { useCategoryMutations } from "../useCompetitions";
 import { AddCategoriesDialog } from "./AddCategoriesDialog";
 import { CategoryRulesDialog } from "./CategoryRulesDialog";
@@ -25,13 +26,14 @@ interface CategoriesPanelProps {
 }
 
 export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: CategoriesPanelProps) {
-  const { competition, categories, entries, stationSets } = setup;
+  const { categories, entries, stationSets } = setup;
   const { remove, setUsesStationSet } = useCategoryMutations();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [removing, setRemoving] = useState<Category | null>(null);
   const editable = permissions.editSetup;
-  const fitnessChallenge = competition.kind === "fitness_challenge";
+  // The station sets column is for Fitness Challenge categories; Speed Fit ones are timed instead.
+  const fitnessChallenge = categories.some((c) => c.kind === "fitness_challenge");
 
   const categoryEntries = (categoryId: number) => entries.filter((e) => e.categoryId === categoryId);
   const removingEntries = removing ? categoryEntries(removing.id) : [];
@@ -84,7 +86,12 @@ export function CategoriesPanel({ setup, permissions, entryIdsWithResults }: Cat
                     <TableCell className="pl-4 font-medium">{category.name}</TableCell>
                     <TableCell>{CATEGORY_GENDER_LABELS[category.gender]}</TableCell>
                     <TableCell>{formatAgeRange(category)}</TableCell>
-                    {fitnessChallenge && (
+                    {fitnessChallenge && category.kind === "speed_fit" && (
+                      <TableCell>
+                        <CompetitionKindBadge kind="speed_fit" />
+                      </TableCell>
+                    )}
+                    {fitnessChallenge && category.kind === "fitness_challenge" && (
                       <TableCell>
                         {/* One chip per set; a category can use several (each ranked, plus overall). */}
                         <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Station sets for ${category.name}`}>

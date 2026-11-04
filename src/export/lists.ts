@@ -79,12 +79,11 @@ export function placementTable(results: CompetitionResults, by: PlacementGroupin
   // IFBB Fitness Challenge results never show clubs (see standingsTable), so those categories don't count for clubs.
   const groupsOf = (entry: Entry, noClubs: boolean) =>
     new Set(entry.members.map((m) => (by === "country" ? countryName(m.country) : noClubs ? "" : m.club.trim())).filter(Boolean));
-  const placed: { entry: Entry; place: number | null; noClubs: boolean }[] =
-    results.kind === "speed_fit"
-      ? results.categories.flatMap((c) => c.rows.map((row) => ({ ...row, noClubs: false })))
-      : results.categories.flatMap((c) =>
-          c.rows.map((row) => ({ entry: row.entry, place: hasReps(row) ? row.place : null, noClubs: c.category.federation === "ifbb" })),
-        );
+  const placed: { entry: Entry; place: number | null; noClubs: boolean }[] = results.categories.flatMap((c) =>
+    c.kind === "speed_fit"
+      ? c.rows.map((row) => ({ ...row, noClubs: false }))
+      : c.rows.map((row) => ({ entry: row.entry, place: hasReps(row) ? row.place : null, noClubs: c.category.federation === "ifbb" })),
+  );
 
   const tally = new Map<string, PlacementRow>();
   for (const { entry, place, noClubs } of placed) {

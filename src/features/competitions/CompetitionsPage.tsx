@@ -10,7 +10,7 @@ import { QueryState } from "@/components/shared/QueryState";
 import { formatDateRange } from "@/lib/dates";
 import { CompetitionFormDialog } from "./CompetitionFormDialog";
 import { ROW_ENTER, staggerStyle } from "@/lib/motion";
-import { CompetitionKindBadge, CompetitionStatusBadge } from "./CompetitionBadges";
+import { CompetitionStatusBadge } from "./CompetitionBadges";
 import { useCompetitions } from "./useCompetitions";
 
 export function CompetitionsPage() {
@@ -56,13 +56,10 @@ export function CompetitionsPage() {
                     >
                       <TableCell className="pl-4">
                         <span className="block font-medium">{c.name}</span>
-                        <span className="mt-1 inline-block">
-                          <CompetitionKindBadge kind={c.kind} />
-                        </span>
                       </TableCell>
                       <TableCell>{formatDateRange(c.date, c.endDate)}</TableCell>
                       <TableCell className="text-muted-foreground">{c.location || "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">{c.kind === "speed_fit" ? "—" : c.setCount > 1 ? `${c.stationCount} in ${c.setCount} sets` : c.stationCount}</TableCell>
+                      <TableCell className="text-right tabular-nums">{c.categoryCount > 0 && c.speedFitCount === c.categoryCount ? "—" : c.setCount > 1 ? `${c.stationCount} in ${c.setCount} sets` : c.stationCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.categoryCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{c.entryCount}</TableCell>
                       <TableCell className="pr-4 text-right">

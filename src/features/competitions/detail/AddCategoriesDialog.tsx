@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { CheckList, toggleInSet } from "@/components/shared/CheckList";
 import { FormActions, FormDialog, saveAndClose } from "@/components/shared/FormDialog";
-import type { CompetitionSetup } from "@/db/competitions";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { CompetitionKind, CompetitionSetup } from "@/db/competitions";
 import type { Federation } from "@/db/categoryLibrary";
 import { FederationPicker } from "@/features/categories/FederationPicker";
 import { useCategoryLibrary } from "@/features/categories/useCategoryLibrary";
@@ -25,7 +26,10 @@ export function AddCategoriesDialog({ setup, open, onOpenChange }: AddCategories
 
 function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone: () => void }) {
   const [federation, setFederation] = useState<Federation>("ifbb");
-  const library = useCategoryLibrary({ federation, kind: setup.competition.kind }).data ?? [];
+  const [kind, setKind] = useState<CompetitionKind>(
+    setup.categories.length > 0 && setup.categories.every((c) => c.kind === "speed_fit") ? "speed_fit" : "fitness_challenge",
+  );
+  const library = useCategoryLibrary({ federation, kind }).data ?? [];
   const { addFromLibrary } = useCategoryMutations();
   // "l<id>" = a level, "s<id>" = a sub-group without levels (a category on its own).
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -44,8 +48,8 @@ function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone:
   const items = library.flatMap((group) =>
     group.subgroups.flatMap((subgroup) =>
       subgroup.levels.length === 0
-        ? [item(`s${subgroup.id}`, categoryName(group.name, subgroup, ""), `${describeCategoryRules(subgroup)} · no levels`)]
-        : subgroup.levels.map((level) => item(`l${level.id}`, categoryName(group.name, subgroup, level.name), describeCategoryRules(subgroup))),
+        ? [item(`s${subgroup.id}`, categoryName(group.name, subgroup, "", kind), `${describeCategoryRules(subgroup)} · no levels`)]
+        : subgroup.levels.map((level) => item(`l${level.id}`, categoryName(group.name, subgroup, level.name, kind), describeCategoryRules(subgroup))),
     ),
   );
   const chosen = items.filter((i) => !i.disabledReason && selected.has(i.id)).map((i) => i.id);
@@ -68,13 +72,29 @@ function AddCategoriesForm({ setup, onDone }: { setup: CompetitionSetup; onDone:
           setSelected(new Set());
         }}
       />
+      {/* One library per challenge; a competition can mix Fitness Challenge and Speed Fit categories. */}
+      <Tabs
+        value={kind}
+        onValueChange={(value) => {
+          setKind(value as CompetitionKind);
+          setSelected(new Set());
+        }}
+      >
+        <TabsList>
+          {(Object.keys(COMPETITION_KIND_LABELS) as CompetitionKind[]).map((k) => (
+            <TabsTrigger key={k} value={k} className="px-3">
+              {COMPETITION_KIND_LABELS[k]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       <CheckList
         items={items}
         selected={selected}
         onToggle={(id, checked) => setSelected((current) => toggleInSet(current, id, checked))}
         empty={
           <>
-            The {FEDERATION_LABELS[federation]} {COMPETITION_KIND_LABELS[setup.competition.kind]} category library is empty.{" "}
+            The {FEDERATION_LABELS[federation]} {COMPETITION_KIND_LABELS[kind]} category library is empty.{" "}
             <Link to="/categories" className="font-medium text-foreground underline underline-offset-4">
               Create categories
             </Link>{" "}

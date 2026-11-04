@@ -11,12 +11,12 @@ const entry = (id: number, firstName: string, club = ""): Entry => {
 };
 
 const setup: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", kind: "fitness_challenge", status: "finished" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", status: "finished" },
   stationSets: [
     { id: 1, name: "Set A", stations: [{ stationNumber: 1, exerciseId: 1, exerciseName: "Push-ups" }, { stationNumber: 2, exerciseId: 2, exerciseName: "Squats" }] },
     { id: 2, name: "Set B", stations: [{ stationNumber: 1, exerciseId: 3, exerciseName: "Sit-ups" }] },
   ],
-  categories: [{ id: 1, name: "Open", format: "individual", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [1] }],
+  categories: [{ id: 1, name: "Open", format: "individual", gender: "mixed", minAge: null, maxAge: null, ageGroup: "", level: "", federation: null, kind: "fitness_challenge", stationSetIds: [1] }],
   entries: [entry(1, "Ana"), entry(2, "Ion"), entry(3, "Eva")],
 };
 
@@ -25,7 +25,7 @@ const format = { stationHeader: (s: { stationNumber: number }) => `S${s.stationN
 describe("resultsTables", () => {
   it("Fitness Challenge: Nr Crt | Athlete Name | Country | stations | Total | Placement, in ranking order", () => {
     const results = competitionResults(setup, {
-      kind: "fitness_challenge",
+      times: [],
       scores: [
         { entryId: 1, setId: 1, stationNumber: 1, reps: 20 },
         { entryId: 1, setId: 1, stationNumber: 2, reps: 10 },
@@ -43,8 +43,8 @@ describe("resultsTables", () => {
   });
 
   it("Speed Fit: Nr Crt | Athlete Name | Country | Time | Placement, fastest first, no time last", () => {
-    const speedFit = { ...setup, competition: { ...setup.competition, kind: "speed_fit" as const }, stationSets: [] };
-    const results = competitionResults(speedFit, { kind: "speed_fit", times: [{ entryId: 2, timeMs: 83_450 }, { entryId: 3, timeMs: 61_000 }] });
+    const speedFit = { ...setup, categories: setup.categories.map((c) => ({ ...c, kind: "speed_fit" as const, stationSetIds: [] })) };
+    const results = competitionResults(speedFit, { scores: [], times: [{ entryId: 2, timeMs: 83_450 }, { entryId: 3, timeMs: 61_000 }] });
     const [open] = resultsTables(results, format);
     expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Time", "Placement"]);
     expect(open!.body).toEqual([
@@ -66,7 +66,7 @@ describe("station sets in exports", () => {
       ],
       entries: [entry(1, "Ana"), { ...entry(2, "Ion"), categoryId: 2 }, { ...entry(3, "Eva"), categoryId: 3 }],
     };
-    const results = competitionResults(twoSets, { kind: "fitness_challenge", scores: [{ entryId: 3, setId: 2, stationNumber: 1, reps: 7 }] });
+    const results = competitionResults(twoSets, { scores: [{ entryId: 3, setId: 2, stationNumber: 1, reps: 7 }], times: [] });
     expect(resultsTables(results, format).map((t) => t.head.slice(3, -2))).toEqual([["S1", "S2"], ["S1", "S2"], ["S1"]]);
     const lines = resultsCsv(results).replace("﻿", "").split("\r\n");
     expect(lines.filter((l) => l.startsWith("Category,"))).toHaveLength(2);
@@ -78,7 +78,7 @@ describe("several station sets", () => {
   it("exports a table per set and an overall table with the set totals", () => {
     const both: CompetitionSetup = { ...setup, categories: [{ ...setup.categories[0]!, stationSetIds: [1, 2] }] };
     const results = competitionResults(both, {
-      kind: "fitness_challenge",
+      times: [],
       scores: [
         { entryId: 1, setId: 1, stationNumber: 1, reps: 20 },
         { entryId: 1, setId: 2, stationNumber: 1, reps: 5 },
@@ -95,20 +95,20 @@ describe("several station sets", () => {
 
 describe("club column", () => {
   it("appears only for categories where an athlete has a club", () => {
-    const speedFit = { ...setup, competition: { ...setup.competition, kind: "speed_fit" as const }, stationSets: [] };
+    const speedFit = { ...setup, categories: setup.categories.map((c) => ({ ...c, kind: "speed_fit" as const, stationSetIds: [] })) };
     const withClub = { ...speedFit, entries: [entry(1, "Ana", "CS Dinamo"), entry(2, "Ion")] };
-    const [open] = resultsTables(competitionResults(withClub, { kind: "speed_fit", times: [] }), format);
+    const [open] = resultsTables(competitionResults(withClub, { scores: [], times: [] }), format);
     expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Club", "Time", "Placement"]);
     expect(open!.body[0]).toEqual(["1", "Ana Pop", "ROU", "CS Dinamo", "—", "—"]);
-    expect(resultsTables(competitionResults(speedFit, { kind: "speed_fit", times: [] }), format)[0]!.head).not.toContain("Club");
+    expect(resultsTables(competitionResults(speedFit, { scores: [], times: [] }), format)[0]!.head).not.toContain("Club");
   });
 
   it("is left out of IFBB Fitness Challenge categories, which only show the country", () => {
     const ifbb = { ...setup, categories: [{ ...setup.categories[0]!, federation: "ifbb" as const }], entries: [entry(1, "Ana", "CS Dinamo")] };
-    const [open] = resultsTables(competitionResults(ifbb, { kind: "fitness_challenge", scores: [] }), format);
+    const [open] = resultsTables(competitionResults(ifbb, { scores: [], times: [] }), format);
     expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "S1", "S2", "Total", "Placement"]);
     const romania = { ...ifbb, categories: [{ ...ifbb.categories[0]!, federation: "romania" as const }] };
-    expect(resultsTables(competitionResults(romania, { kind: "fitness_challenge", scores: [] }), format)[0]!.head).toContain("Club");
+    expect(resultsTables(competitionResults(romania, { scores: [], times: [] }), format)[0]!.head).toContain("Club");
   });
 });
 
@@ -118,7 +118,7 @@ describe("couples and teams", () => {
     const ion = { ...entry(2, "Ion").members[0]!, country: "HUN" };
     const couple: Entry = { ...entry(1, "Ana"), team: true, members: [ana, ion] };
     const couples = { ...setup, categories: [{ ...setup.categories[0]!, format: "couple" as const }], entries: [couple] };
-    const [open] = resultsTables(competitionResults(couples, { kind: "fitness_challenge", scores: [] }), format);
+    const [open] = resultsTables(competitionResults(couples, { scores: [], times: [] }), format);
     expect(open!.head.slice(0, 3)).toEqual(["Nr Crt", "Couple", "Country"]);
     expect(open!.body[0]!.slice(0, 3)).toEqual(["1", "Ana Pop / Ion Pop", "ROU / HUN"]);
   });

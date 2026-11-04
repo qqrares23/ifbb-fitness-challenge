@@ -318,7 +318,7 @@ fn owned_by(rows: &Tagged, owner: i64) -> Vec<Value> {
 /// Read queries mirror the SQL in db/categories.ts, db/entries.ts, db/stations.ts and db/results.ts.
 async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Error> {
     const RUNNING: &str = "(SELECT id FROM competitions WHERE status = 'running')";
-    let comps = sqlx::query("SELECT id, name, kind FROM competitions WHERE status = 'running' ORDER BY id")
+    let comps = sqlx::query("SELECT id, name FROM competitions WHERE status = 'running' ORDER BY id")
         .fetch_all(pool)
         .await?;
     if comps.is_empty() {
@@ -328,7 +328,7 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
     let categories = tagged(
         pool,
         &format!(
-            "SELECT competition_id AS owner, id, name, age_group AS ageGroup, level, format, gender, min_age AS minAge, max_age AS maxAge, \
+            "SELECT competition_id AS owner, id, name, kind, age_group AS ageGroup, level, format, gender, min_age AS minAge, max_age AS maxAge, \
                 (SELECT json_group_array(set_id) FROM (SELECT set_id FROM category_station_sets WHERE category_id = c.id ORDER BY set_id)) AS stationSetIds \
              FROM categories c WHERE competition_id IN {RUNNING} ORDER BY id"
         ),
@@ -337,6 +337,7 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
             json!({
                 "id": r.get::<i64, _>("id"),
                 "name": r.get::<String, _>("name"),
+                "kind": r.get::<String, _>("kind"),
                 "ageGroup": r.get::<String, _>("ageGroup"),
                 "level": r.get::<String, _>("level"),
                 "format": r.get::<String, _>("format"),
@@ -426,15 +427,16 @@ async fn running_competitions(pool: &SqlitePool) -> Result<Vec<Value>, sqlx::Err
         .iter()
         .map(|comp| {
             let id: i64 = comp.get("id");
-            let kind: String = comp.get("kind");
-            let mut value = json!({ "id": id, "name": comp.get::<String, _>("name"), "kind": kind, "categories": owned_by(&categories, id), "entries": owned_by(&entries, id) });
-            if kind == "speed_fit" {
-                value["times"] = json!(owned_by(&times, id));
-            } else {
-                value["stationSets"] = json!(owned_by(&station_sets, id));
-                value["scores"] = json!(owned_by(&scores, id));
-            }
-            value
+            // Each category says whether it takes reps (Fitness Challenge) or a time (Speed Fit).
+            json!({
+                "id": id,
+                "name": comp.get::<String, _>("name"),
+                "categories": owned_by(&categories, id),
+                "entries": owned_by(&entries, id),
+                "stationSets": owned_by(&station_sets, id),
+                "scores": owned_by(&scores, id),
+                "times": owned_by(&times, id),
+            })
         })
         .collect())
 }
@@ -483,8 +485,8 @@ mod tests {
                 "INSERT INTO athletes (id, first_name, last_name, date_of_birth, sex, country) VALUES
                    (7, 'A', 'A', '2000-01-01', 'male', 'ROU'), (3, 'B', 'B', '2000-01-01', 'male', 'HUN'),
                    (5, 'C', 'C', '2000-01-01', 'male', 'ROU'), (1, 'D', 'D', '2000-01-01', 'male', 'BGR');
-                 INSERT INTO competitions (id, name, date, kind) VALUES (1, 'Cup', '2026-01-01', 'speed_fit');
-                 INSERT INTO categories (id, competition_id, name, gender, format) VALUES (1, 1, 'Teams', 'male', 'team');
+                 INSERT INTO competitions (id, name, date) VALUES (1, 'Cup', '2026-01-01');
+                 INSERT INTO categories (id, competition_id, name, gender, format, kind) VALUES (1, 1, 'Teams', 'male', 'team', 'speed_fit');
                  INSERT INTO entries (id, competition_id, category_id, athlete_id, bib_number) VALUES (1, 1, 1, 7, 1);
                  INSERT INTO entry_members (entry_id, athlete_id, position) VALUES (1, 7, 1), (1, 3, 2), (1, 5, 3), (1, 1, 4);
                  UPDATE competitions SET status = 'running' WHERE id = 1;",
@@ -494,6 +496,68 @@ mod tests {
             .unwrap();
             let competitions = running_competitions(&pool).await.unwrap();
             assert_eq!(competitions[0]["entries"][0]["country"], "ROU / HUN / BGR");
+        });
+    }
+
+    #[test]
+    fn old_speed_fit_competitions_keep_their_times_and_new_ones_mix_both_challenges() {
+        tauri::async_runtime::block_on(async {
+            let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+            async fn exec(pool: &SqlitePool, sql: &str) -> Result<(), sqlx::Error> {
+                sqlx::raw_sql(sql).execute(pool).await.map(|_| ())
+            }
+            let run = |sql: &'static str| exec(&pool, sql);
+            let (before, after) = crate::migrations().into_iter().partition::<Vec<_>, _>(|m| m.version < 16);
+            for migration in before {
+                run(migration.sql).await.unwrap();
+            }
+            // A finished Speed Fit competition, saved before 0016.
+            run("INSERT INTO athletes (id, first_name, last_name, date_of_birth, sex, country) VALUES (1, 'A', 'A', '2000-01-01', 'male', 'ROU');
+                 INSERT INTO competitions (id, name, date, kind) VALUES (1, 'Old', '2026-01-01', 'speed_fit');
+                 INSERT INTO categories (id, competition_id, name, gender) VALUES (1, 1, 'Open', 'male');
+                 INSERT INTO entries (id, competition_id, category_id, athlete_id, bib_number) VALUES (1, 1, 1, 1, 1);
+                 UPDATE competitions SET status = 'running' WHERE id = 1;
+                 INSERT INTO speed_fit_times (entry_id, time_ms) VALUES (1, 61000);
+                 UPDATE competitions SET status = 'finished' WHERE id = 1;
+                 INSERT INTO competitions (id, name, date, kind) VALUES (4, 'Old draft', '2026-01-02', 'speed_fit');
+                 INSERT INTO categories (id, competition_id, name, gender, age_group) VALUES (4, 4, 'Junior Men', 'male', 'Junior');")
+                .await
+                .unwrap();
+            for migration in after {
+                run(migration.sql).await.unwrap();
+            }
+            let kind: String = sqlx::query_scalar("SELECT kind FROM categories WHERE id = 1").fetch_one(&pool).await.unwrap();
+            assert_eq!(kind, "speed_fit");
+            let time: i64 = sqlx::query_scalar("SELECT time_ms FROM speed_fit_times WHERE entry_id = 1").fetch_one(&pool).await.unwrap();
+            assert_eq!(time, 61000);
+
+            // An old draft one: renamed as the app names it now, so its Fitness Challenge twin fits,
+            // and given "Set A" for that category. An entry can't move between the two.
+            let name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 4").fetch_one(&pool).await.unwrap();
+            assert_eq!(name, "Speed Fit · Junior Men");
+            run("INSERT INTO categories (id, competition_id, name, gender, age_group) VALUES (5, 4, 'Junior Men', 'male', 'Junior');
+                 INSERT INTO entries (id, competition_id, category_id, athlete_id, bib_number) VALUES (4, 4, 5, 1, 1);")
+                .await
+                .unwrap();
+            let fc_sets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM category_station_sets WHERE category_id = 5").fetch_one(&pool).await.unwrap();
+            assert_eq!(fc_sets, 1, "the Fitness Challenge category gets Set A");
+            assert!(run("UPDATE entries SET category_id = 4 WHERE id = 4").await.is_err(), "no move between challenges");
+
+            // One new competition: the same athlete in a Fitness Challenge and a Speed Fit category, one number.
+            run("INSERT INTO competitions (id, name, date) VALUES (2, 'New', '2026-02-01');
+                 INSERT INTO categories (id, competition_id, name, gender, kind) VALUES (2, 2, 'Reps', 'male', 'fitness_challenge'), (3, 2, 'Speed Fit · Reps', 'male', 'speed_fit');
+                 INSERT INTO competition_stations (set_id, station_number) SELECT id, 1 FROM station_sets WHERE competition_id = 2;
+                 INSERT INTO entries (id, competition_id, category_id, athlete_id, bib_number) VALUES (2, 2, 2, 1, 5), (3, 2, 3, 1, 5);
+                 UPDATE competitions SET status = 'running' WHERE id = 2;
+                 INSERT INTO scores (entry_id, set_id, station_number, reps) SELECT 2, id, 1, 10 FROM station_sets WHERE competition_id = 2;
+                 INSERT INTO speed_fit_times (entry_id, time_ms) VALUES (3, 50000);")
+                .await
+                .unwrap();
+            let sf_sets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM category_station_sets WHERE category_id = 3").fetch_one(&pool).await.unwrap();
+            assert_eq!(sf_sets, 0, "Speed Fit categories have no station set");
+            assert!(run("INSERT INTO speed_fit_times (entry_id, time_ms) VALUES (2, 1000)").await.is_err(), "no time for reps");
+            assert!(run("INSERT INTO scores (entry_id, set_id, station_number, reps) SELECT 3, id, 1, 1 FROM station_sets WHERE competition_id = 2").await.is_err(), "no reps for Speed Fit");
+            assert!(run("UPDATE categories SET kind = 'speed_fit' WHERE id = 2").await.is_err(), "type is fixed");
         });
     }
 

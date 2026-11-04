@@ -49,16 +49,18 @@ describe("cross-language constants", () => {
     const onPage = new Function(`//${port}; return categoryName;`)() as typeof categoryName;
     const rules = (format: CategoryFormat, gender: CategoryGender, minAge: number | null, maxAge: number | null) => ({ format, gender, minAge, maxAge });
     const samples: Parameters<typeof categoryName>[] = [
-      ["Junior", rules("individual", "male", 14, 23), "Gold"],
-      ["Masters", rules("individual", "female", 40, null), "Bronze"],
-      ["Open", rules("individual", "male", null, null), ""],
-      ["Youth", rules("individual", "mixed", null, 12), ""],
-      ["Kids", rules("team", "female", 10, 10), "Level 2"],
-      ["Juniors Men 16-20", rules("individual", "male", 16, 20), "Gold"],
-      ["Junior Gold", rules("individual", "male", 14, 23), "Gold"],
-      ["Senior", rules("couple", "mixed", 18, null), "Gold"],
-      ["Couples", rules("couple", "mixed", 18, null), ""],
-      ["Teams", rules("team", "male", null, null), ""],
+      ["Junior", rules("individual", "male", 14, 23), "Gold", "fitness_challenge"],
+      ["Masters", rules("individual", "female", 40, null), "Bronze", "fitness_challenge"],
+      ["Open", rules("individual", "male", null, null), "", "fitness_challenge"],
+      ["Youth", rules("individual", "mixed", null, 12), "", "fitness_challenge"],
+      ["Kids", rules("team", "female", 10, 10), "Level 2", "fitness_challenge"],
+      ["Juniors Men 16-20", rules("individual", "male", 16, 20), "Gold", "fitness_challenge"],
+      ["Junior Gold", rules("individual", "male", 14, 23), "Gold", "fitness_challenge"],
+      ["Senior", rules("couple", "mixed", 18, null), "Gold", "fitness_challenge"],
+      ["Couples", rules("couple", "mixed", 18, null), "", "fitness_challenge"],
+      ["Teams", rules("team", "male", null, null), "", "fitness_challenge"],
+      ["Senior", rules("individual", "male", 18, null), "Gold", "speed_fit"],
+      ["Senior", rules("individual", "male", 18, null), "SPEED FIT", "speed_fit"],
     ];
     for (const sample of samples) expect(onPage(...sample)).toBe(categoryName(...sample));
   });

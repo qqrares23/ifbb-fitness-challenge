@@ -55,7 +55,7 @@ export async function createStationSet({ competitionId }: { competitionId: numbe
   if (names.length === 0) {
     await conn.execute(
       `INSERT INTO category_station_sets (category_id, set_id)
-       SELECT id, $1 FROM categories c WHERE competition_id = $2 AND NOT EXISTS (SELECT 1 FROM category_station_sets WHERE category_id = c.id)`,
+       SELECT id, $1 FROM categories c WHERE competition_id = $2 AND kind = 'fitness_challenge' AND NOT EXISTS (SELECT 1 FROM category_station_sets WHERE category_id = c.id)`,
       [result.lastInsertId, competitionId],
     );
   }

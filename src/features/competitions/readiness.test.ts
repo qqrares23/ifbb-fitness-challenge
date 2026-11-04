@@ -15,9 +15,9 @@ const setA: StationSet = {
 const ion = { athleteId: 1, firstName: "Ion", lastName: "Pop", dateOfBirth: "2008-01-01", sex: "male", country: "ROU", club: "" } as const;
 
 const ready: CompetitionSetup = {
-  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", kind: "fitness_challenge", status: "draft" },
+  competition: { id: 1, name: "Cup", date: "2026-10-01", endDate: null, location: "", status: "draft" },
   stationSets: [setA],
-  categories: [{ id: 10, name: "Juniors", format: "individual", gender: "male", minAge: 16, maxAge: 20, ageGroup: "", level: "", federation: null, stationSetIds: [1] }],
+  categories: [{ id: 10, name: "Juniors", format: "individual", gender: "male", minAge: 16, maxAge: 20, ageGroup: "", level: "", federation: null, kind: "fitness_challenge", stationSetIds: [1] }],
   entries: [
     { id: 100, categoryId: 10, bibNumber: 1, lateEntry: false, team: false, ...ion, members: [ion] },
   ],
@@ -34,8 +34,14 @@ describe("competitionReadiness", () => {
   });
 
   it("doesn't ask a Speed Fit competition for stations", () => {
-    const speedFit = { ...ready, competition: { ...ready.competition, kind: "speed_fit" as const }, stationSets: [] };
-    expect(competitionReadiness({ ...speedFit, categories: [{ ...ready.categories[0]!, stationSetIds: [] }] }).blocking).toEqual([]);
+    const speedFit = { ...ready, categories: ready.categories.map((c) => ({ ...c, kind: "speed_fit" as const, stationSetIds: [] })), stationSets: [] };
+    expect(competitionReadiness(speedFit).blocking).toEqual([]);
+  });
+
+  it("asks only the Fitness Challenge categories of a mixed competition for a station set", () => {
+    const sf = { ...ready.categories[0]!, id: 11, name: "Speed Fit · Juniors", kind: "speed_fit" as const, stationSetIds: [] };
+    const fc = { ...ready.categories[0]!, stationSetIds: [] };
+    expect(competitionReadiness({ ...ready, categories: [fc, sf] }).blocking).toEqual(['Pick a station set for "Juniors".']);
   });
 
   it("blocks on stations without an exercise, listed together", () => {
@@ -72,7 +78,7 @@ describe("competitionReadiness", () => {
     const { blocking, warnings } = competitionReadiness({
       ...ready,
       stationSets: [{ ...setA, stations: [...setA.stations, { stationNumber: 3, exerciseId: 1, exerciseName: "Push-ups" }] }],
-      categories: [...ready.categories, { id: 11, name: "Masters", format: "individual", gender: "mixed", minAge: 40, maxAge: null, ageGroup: "", level: "", federation: null, stationSetIds: [1] }],
+      categories: [...ready.categories, { id: 11, name: "Masters", format: "individual", gender: "mixed", minAge: 40, maxAge: null, ageGroup: "", level: "", federation: null, kind: "fitness_challenge", stationSetIds: [1] }],
     });
     expect(blocking).toEqual([]);
     expect(warnings).toEqual(['"Push-ups" is used at stations 1, 3.', '"Masters" has no athletes.']);

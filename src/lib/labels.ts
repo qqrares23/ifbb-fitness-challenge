@@ -1,5 +1,5 @@
 import type { Federation } from "@/db/categoryLibrary";
-import type { Competition, CompetitionKind } from "@/db/competitions";
+import type { CompetitionKind } from "@/db/competitions";
 import type { CategoryFormat, CategoryGender, CategoryRules, Sex } from "@/engine";
 
 export const COMPETITION_KIND_LABELS: Record<CompetitionKind, string> = {
@@ -104,9 +104,17 @@ export function subgroupName(ageGroup: string, rules: CategoryRules): string {
  * without levels is named after the sub-group alone, and a level the age group name already
  * states isn't repeated.
  */
-export function categoryName(ageGroup: string, rules: CategoryRules, level: string): string {
+export function categoryName(ageGroup: string, rules: CategoryRules, level: string, kind: CompetitionKind): string {
   const subgroup = subgroupName(ageGroup, rules);
-  return !level || mentions(ageGroup, level) ? subgroup : `${subgroup} · ${level}`;
+  return withKind(kind, !level || mentions(ageGroup, level) ? subgroup : `${subgroup} · ${level}`);
+}
+
+const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Speed Fit is named in front unless the text already says it, however it is spelled. */
+function withKind(kind: CompetitionKind, text: string): string {
+  const label = COMPETITION_KIND_LABELS[kind];
+  return kind === "fitness_challenge" || squash(text).includes(squash(label)) ? text : `${label} · ${text}`;
 }
 
 /**
@@ -124,9 +132,15 @@ export function categoryTitle(category: CategoryRules & { name: string; ageGroup
  * A section's subtitle: "Fitness Challenge — Junior Men 14–23 Gold Level" plus `suffix`. The challenge
  * isn't named again when the category already names it (Speed Fit categories have the level "Speed Fit").
  */
-export function categorySubtitle(competition: Pick<Competition, "kind">, category: CategoryRules & { name: string; ageGroup: string; level: string }, suffix = ""): string {
+export function categorySubtitle(category: CategoryRules & { name: string; ageGroup: string; level: string; kind: CompetitionKind }, suffix = ""): string {
   const title = categoryTitle(category);
-  const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const kind = COMPETITION_KIND_LABELS[competition.kind];
+  const kind = COMPETITION_KIND_LABELS[category.kind];
   return `${squash(title).includes(squash(kind)) ? title : `${kind} — ${title}`}${suffix}`;
+}
+
+/** "Speed Fit — Athletes" when every category is one challenge; just "Athletes" when they mix. */
+export function competitionTitle(categories: readonly { kind: CompetitionKind }[], title: string): string {
+  const kinds = new Set(categories.map((c) => c.kind));
+  const [only] = kinds;
+  return kinds.size === 1 && only ? `${COMPETITION_KIND_LABELS[only]} — ${title}` : title;
 }

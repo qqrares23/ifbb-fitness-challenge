@@ -6,7 +6,7 @@ import { listStationSets, type StationSet } from "./stations";
 
 export type CompetitionStatus = "draft" | "running" | "finished";
 
-/** Fitness Challenge = reps at stations, most wins. Speed Fit = one time for the whole set, fastest wins. */
+/** A category's challenge. Fitness Challenge = reps at stations, most wins. Speed Fit = one time for the whole set, fastest wins. */
 export type CompetitionKind = "fitness_challenge" | "speed_fit";
 
 export interface Competition {
@@ -17,7 +17,6 @@ export interface Competition {
   /** The last day, or null for a one-day competition. */
   endDate: IsoDate | null;
   location: string;
-  kind: CompetitionKind;
   status: CompetitionStatus;
 }
 
@@ -26,24 +25,22 @@ export interface CompetitionSummary extends Competition {
   /** Stations across all sets. */
   stationCount: number;
   categoryCount: number;
+  speedFitCount: number;
   entryCount: number;
 }
 
 export type CompetitionInput = Pick<Competition, "name" | "date" | "endDate" | "location">;
 
-/** The challenge type is chosen once, at creation. */
-export type NewCompetitionInput = CompetitionInput & Pick<Competition, "kind">;
-
 /** Everything the competition screens need, read in one go. */
 export interface CompetitionSetup {
   competition: Competition;
-  /** Fitness Challenge only; empty for Speed Fit. */
+  /** Used by its Fitness Challenge categories only. */
   stationSets: StationSet[];
   categories: Category[];
   entries: Entry[];
 }
 
-const COLUMNS = "id, name, date, end_date AS endDate, location, kind, status";
+const COLUMNS = "id, name, date, end_date AS endDate, location, status";
 
 function values(input: CompetitionInput) {
   // A last day equal to the first is a one-day competition.
@@ -56,6 +53,7 @@ export async function listCompetitions(): Promise<CompetitionSummary[]> {
        (SELECT COUNT(*) FROM station_sets t WHERE t.competition_id = c.id) AS setCount,
        (SELECT COUNT(*) FROM competition_stations s JOIN station_sets t ON t.id = s.set_id WHERE t.competition_id = c.id) AS stationCount,
        (SELECT COUNT(*) FROM categories k WHERE k.competition_id = c.id) AS categoryCount,
+       (SELECT COUNT(*) FROM categories k WHERE k.competition_id = c.id AND k.kind = 'speed_fit') AS speedFitCount,
        (SELECT COUNT(*) FROM (
           SELECT e.athlete_id FROM entries e WHERE e.competition_id = c.id
           UNION SELECT m.athlete_id FROM entry_members m JOIN entries e ON e.id = m.entry_id WHERE e.competition_id = c.id)) AS entryCount
@@ -76,11 +74,8 @@ export async function getCompetitionSetup(id: number): Promise<CompetitionSetup 
 }
 
 /** Returns the new competition's id. */
-export async function createCompetition(input: NewCompetitionInput): Promise<number> {
-  const result = await (await db()).execute(
-    "INSERT INTO competitions (name, date, end_date, location, kind) VALUES ($1, $2, $3, $4, $5)",
-    [...values(input), input.kind],
-  );
+export async function createCompetition(input: CompetitionInput): Promise<number> {
+  const result = await (await db()).execute("INSERT INTO competitions (name, date, end_date, location) VALUES ($1, $2, $3, $4)", values(input));
   return result.lastInsertId!;
 }
 

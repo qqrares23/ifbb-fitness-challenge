@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { backupNow, backupStatus, markBackupGuideSeen, pickFolder, setCloudBackupFolder } from "@/db/backup";
 import { useDbMutation } from "@/hooks/useDbMutation";
+import { formatDate } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 
 const STATUS_KEY = ["backups"];
 
-/** "fitness-challenge-2026-10-27_19-30-05.db" → "2026-10-27 19:30". */
+/** "fitness-challenge-2026-10-27_19-30-05.db" → "27/10/2026 19:30". */
 function backupTime(name: string): string {
   const match = /(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})/.exec(name);
-  return match ? `${match[1]} ${match[2]}:${match[3]}` : name;
+  return match ? `${formatDate(match[1]!)} ${match[2]}:${match[3]}` : name;
 }
 
 /**

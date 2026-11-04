@@ -16,10 +16,10 @@ import { useHeldWhileTyping } from "@/components/shared/CommitInput";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QueryState, RefreshFailed } from "@/components/shared/QueryState";
-import type { CompetitionSetup } from "@/db/competitions";
+import type { CompetitionKind, CompetitionSetup } from "@/db/competitions";
 import { formatDateRange } from "@/lib/dates";
 import { CompetitionFormDialog } from "../CompetitionFormDialog";
-import { CompetitionKindBadge, CompetitionStatusBadge } from "../CompetitionBadges";
+import { CompetitionStatusBadge } from "../CompetitionBadges";
 import { competitionPermissions } from "../permissions";
 import { competitionReadiness } from "../readiness";
 import { ExportButtons } from "../results/ExportButtons";
@@ -75,12 +75,17 @@ function CompetitionDetail({ setup }: { setup: CompetitionSetup }) {
 }
 
 function finishWarning(results: CompetitionResults): string {
-  const missing = results.categories.reduce((sum, c) => sum + c.missingResults, 0);
-  if (missing === 0) return "All results are in. Results will be locked and ready to export.";
-  const plural = missing !== 1;
-  return results.kind === "speed_fit"
-    ? `${missing} athlete${plural ? "s have" : " has"} no time and will be listed without a place. Results will be locked.`
-    : `${missing} station result${plural ? "s are" : " is"} still empty and will count as 0; an athlete with no reps at all is listed without a place. Results will be locked.`;
+  const missing = (kind: CompetitionKind) => results.categories.reduce((sum, c) => sum + (c.kind === kind ? c.missingResults : 0), 0);
+  const reps = missing("fitness_challenge");
+  const times = missing("speed_fit");
+  if (reps + times === 0) return "All results are in. Results will be locked and ready to export.";
+  return [
+    reps > 0 && `${reps} station result${reps !== 1 ? "s are" : " is"} still empty and will count as 0; an athlete with no reps at all is listed without a place.`,
+    times > 0 && `${times} Speed Fit athlete${times !== 1 ? "s have" : " has"} no time and will be listed without a place.`,
+    "Results will be locked.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 interface CompetitionViewProps {
@@ -99,13 +104,14 @@ function CompetitionView({ setup, results, resultsStale, entryIdsWithResults }: 
   const [pending, setPending] = useState<PendingAction>(null);
   const locked = competition.status !== "draft";
   const permissions = competitionPermissions(competition.status);
-  const speedFit = competition.kind === "speed_fit";
+  // Stations are for Fitness Challenge categories; a competition of only Speed Fit categories has none to show.
+  const hasSpeedFit = categories.some((c) => c.kind === "speed_fit");
+  const speedFit = categories.length > 0 && categories.every((c) => c.kind === "speed_fit");
   const readiness = competitionReadiness(setup);
-  const resultNoun = speedFit ? "time" : "rep";
+  const resultNoun = speedFit ? "time" : hasSpeedFit ? "result" : "rep";
 
   const actions = (
     <>
-      <CompetitionKindBadge kind={competition.kind} />
       <CompetitionStatusBadge status={competition.status} />
       {/* Always available: once started the form locks the start date and location, the name and end date stay editable. */}
       <AnimatedButton icon={SquarePenIcon} variant="outline" onClick={() => setEditing(true)}>
@@ -222,7 +228,7 @@ function CompetitionView({ setup, results, resultsStale, entryIdsWithResults }: 
         description={`Every ${resultNoun} recorded in this competition is deleted, e.g. after a trial run. The competition keeps running, with its stations, categories and athletes.`}
         confirmLabel="Delete results"
         destructive
-        onConfirm={() => clearResults.mutate(competition)}
+        onConfirm={() => clearResults.mutate(competition.id)}
       />
       <ConfirmDialog
         open={pending === "restart"}
