@@ -1,6 +1,7 @@
 import type { Federation } from "@/db/categoryLibrary";
 import type { CompetitionKind } from "@/db/competitions";
 import type { CategoryFormat, CategoryGender, CategoryRules, Sex } from "@/engine";
+import { countryName } from "@/lib/countries";
 
 export const COMPETITION_KIND_LABELS: Record<CompetitionKind, string> = {
   fitness_challenge: "Fitness Challenge",
@@ -34,8 +35,8 @@ export const entryListName = (e: Members) => e.members.map(listName).join(" / ")
 /** Each value once, empty ones left out: "ROU / HUN". */
 export const distinct = (values: string[]) => [...new Set(values.filter(Boolean))].join(" / ");
 
-/** Each country once: "ROU / HUN". */
-export const entryCountries = (e: Members) => distinct(e.members.map((m) => m.country));
+/** Each country once, written out in full for printed results: "Romania / Hungary". */
+export const entryCountries = (e: Members) => distinct(e.members.map((m) => countryName(m.country)));
 
 /** Each club once; empty when nobody has one. */
 export const entryClubs = (e: Members) => distinct(e.members.map((m) => m.club.trim()));

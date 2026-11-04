@@ -562,7 +562,8 @@ exportResults(format, setup, results, logos)
   │     Speed Fit:         Nr Crt | Athlete Name | Country | [Club] | Time | Placement
   │     (An athlete with no result at all has no Placement, as on the screens.)
   │     (Club only when someone in the category has one, and never in IFBB Fitness Challenge
-  │      categories; "Athlete Name" reads "Couple" / "Team" there, with "A / B" names and countries)
+  │      categories; "Athlete Name" reads "Couple" / "Team" there, with "A / B" names and countries;
+  │      countries are written out in full, "Romania", never "ROU")
   ├ pdf.resultsPdf()     A4 landscape, one page per category, each with a bold, centred header
   │                      (name, first – last day · location, category) between the left and right logos (PdfLogoDialog: IFBB, another image or none on each side;
   │                      remembered in localStorage) naming the category once:

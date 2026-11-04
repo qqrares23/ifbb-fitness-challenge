@@ -106,7 +106,7 @@ export function resultsPdf(setup: CompetitionSetup, results: CompetitionResults,
     const columnStyles: Record<number, { cellWidth?: number; fontStyle?: "bold" }> = {
       0: { cellWidth: 16 },
       [nameColumn]: { cellWidth: 62 },
-      2: { cellWidth: 20 },
+      2: { cellWidth: 38 }, // full country names, e.g. "Romania / Hungary"
       [placementColumn - 1]: { cellWidth: category.kind === "speed_fit" ? 26 : 18, fontStyle: "bold" },
       [placementColumn]: { cellWidth: 22, fontStyle: "bold" },
     };

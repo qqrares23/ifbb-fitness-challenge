@@ -4,7 +4,7 @@ import type { Entry, EntryMember } from "@/db/entries";
 import { ageOn, assignPlaces } from "@/engine";
 import { hasReps, type CompetitionResults } from "@/features/competitions/standings";
 import { countryName } from "@/lib/countries";
-import { distinct, entryClubs, entryFullName, listName, SEX_LABELS } from "@/lib/labels";
+import { entryClubs, entryCountries, entryFullName, listName, SEX_LABELS } from "@/lib/labels";
 
 // Tables for the entry list and the placement by country / club. Countries are written out in
 // full ("Romania", not "ROU"): these are printed for people, not matched by code.
@@ -13,8 +13,6 @@ export interface SimpleTable {
   head: string[];
   body: string[][];
 }
-
-const fullCountries = (members: readonly EntryMember[]) => distinct(members.map((m) => countryName(m.country)));
 
 /** Every athlete entered, by surname: Nr | Athlete | Sex | Age | Country | [Club] | Categories. */
 export function athleteListTable(setup: CompetitionSetup): SimpleTable {
@@ -55,7 +53,7 @@ export function categoryEntriesTable(category: Category, entries: readonly Entry
   const withClub = own.some((e) => entryClubs(e));
   return {
     head: ["Nr", NAME_HEADERS[category.format], "Country", ...(withClub ? ["Club"] : [])],
-    body: own.map((e) => [String(e.bibNumber), entryFullName(e), fullCountries(e.members), ...(withClub ? [entryClubs(e)] : [])]),
+    body: own.map((e) => [String(e.bibNumber), entryFullName(e), entryCountries(e), ...(withClub ? [entryClubs(e)] : [])]),
   };
 }
 

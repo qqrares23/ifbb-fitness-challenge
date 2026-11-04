@@ -36,9 +36,9 @@ describe("resultsTables", () => {
     const [open] = resultsTables(results, format);
     expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "S1", "S2", "Total", "Placement"]);
     expect(open!.body).toEqual([
-      ["1", "Ana Pop", "ROU", "20", "10", "30", "1"],
-      ["2", "Ion Pop", "ROU", "30", "—", "30", "2"], // equal total, fewer reps on the last station
-      ["3", "Eva Pop", "ROU", "—", "—", "0", "—"], // no reps at all: unplaced, as on the screens
+      ["1", "Ana Pop", "Romania", "20", "10", "30", "1"],
+      ["2", "Ion Pop", "Romania", "30", "—", "30", "2"], // equal total, fewer reps on the last station
+      ["3", "Eva Pop", "Romania", "—", "—", "0", "—"], // no reps at all: unplaced, as on the screens
     ]);
   });
 
@@ -48,9 +48,9 @@ describe("resultsTables", () => {
     const [open] = resultsTables(results, format);
     expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Time", "Placement"]);
     expect(open!.body).toEqual([
-      ["1", "Eva Pop", "ROU", "1:01.00", "1"],
-      ["2", "Ion Pop", "ROU", "1:23.45", "2"],
-      ["3", "Ana Pop", "ROU", "—", "—"],
+      ["1", "Eva Pop", "Romania", "1:01.00", "1"],
+      ["2", "Ion Pop", "Romania", "1:23.45", "2"],
+      ["3", "Ana Pop", "Romania", "—", "—"],
     ]);
   });
 });
@@ -70,7 +70,7 @@ describe("station sets in exports", () => {
     expect(resultsTables(results, format).map((t) => t.head.slice(3, -2))).toEqual([["S1", "S2"], ["S1", "S2"], ["S1"]]);
     const lines = resultsCsv(results).replace("﻿", "").split("\r\n");
     expect(lines.filter((l) => l.startsWith("Category,"))).toHaveLength(2);
-    expect(lines).toContain("Bronze,1,Eva Pop,ROU,7,7,1");
+    expect(lines).toContain("Bronze,1,Eva Pop,Romania,7,7,1");
   });
 });
 
@@ -88,8 +88,8 @@ describe("several station sets", () => {
     const tables = resultsTables(results, format);
     expect(tables.map((t) => t.part)).toEqual(["Set A", "Set B", "Overall"]);
     expect(tables[2]!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Set A", "Set B", "Total", "Placement"]);
-    expect(tables[2]!.body[0]).toEqual(["1", "Ion Pop", "ROU", "—", "30", "30", "1"]);
-    expect(resultsCsv(results)).toContain("Open · Overall,1,Ion Pop,ROU,—,30,30,1".replace("—", ""));
+    expect(tables[2]!.body[0]).toEqual(["1", "Ion Pop", "Romania", "—", "30", "30", "1"]);
+    expect(resultsCsv(results)).toContain("Open · Overall,1,Ion Pop,Romania,—,30,30,1".replace("—", ""));
   });
 });
 
@@ -99,7 +99,7 @@ describe("club column", () => {
     const withClub = { ...speedFit, entries: [entry(1, "Ana", "CS Dinamo"), entry(2, "Ion")] };
     const [open] = resultsTables(competitionResults(withClub, { scores: [], times: [] }), format);
     expect(open!.head).toEqual(["Nr Crt", "Athlete Name", "Country", "Club", "Time", "Placement"]);
-    expect(open!.body[0]).toEqual(["1", "Ana Pop", "ROU", "CS Dinamo", "—", "—"]);
+    expect(open!.body[0]).toEqual(["1", "Ana Pop", "Romania", "CS Dinamo", "—", "—"]);
     expect(resultsTables(competitionResults(speedFit, { scores: [], times: [] }), format)[0]!.head).not.toContain("Club");
   });
 
@@ -120,7 +120,7 @@ describe("couples and teams", () => {
     const couples = { ...setup, categories: [{ ...setup.categories[0]!, format: "couple" as const }], entries: [couple] };
     const [open] = resultsTables(competitionResults(couples, { scores: [], times: [] }), format);
     expect(open!.head.slice(0, 3)).toEqual(["Nr Crt", "Couple", "Country"]);
-    expect(open!.body[0]!.slice(0, 3)).toEqual(["1", "Ana Pop / Ion Pop", "ROU / HUN"]);
+    expect(open!.body[0]!.slice(0, 3)).toEqual(["1", "Ana Pop / Ion Pop", "Romania / Hungary"]);
   });
 });
 
