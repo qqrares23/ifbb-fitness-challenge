@@ -35,7 +35,7 @@ git tag v0.1.0 && git push origin v0.1.0
 
 The `.dmg` (universal: Apple Silicon + Intel), the Windows `.msi` / `setup.exe` and the Linux
 `.AppImage` / `.deb` / `.rpm` are attached to a
-**draft** release on GitHub. The macOS build is not code-signed, so on first launch macOS asks for
+**published** release on GitHub, with the signed `latest.json` that installed apps (0.9.0 and later) check at startup to update themselves. Signing needs the `TAURI_SIGNING_PRIVATE_KEY` repository secret. The macOS build is not code-signed, so on first launch macOS asks for
 confirmation: right-click the app → **Open**. Signing needs an Apple Developer account.
 
 ## Structure

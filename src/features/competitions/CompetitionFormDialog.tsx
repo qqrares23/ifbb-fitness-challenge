@@ -40,9 +40,8 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
     // ISO dates compare as text.
     endDate: submitted && values.date && values.endDate && values.endDate < values.date ? "Can't be before the start date." : undefined,
   };
-  // Once started the start date and location are locked: the start date decides every athlete's age (the database enforces this, see 0014).
-  // The name and end date only change what is printed, so they stay editable.
-  const onlyName = competition !== null && !competitionPermissions(competition.status).editDetails;
+  // Once started only the location is locked (the database enforces this, see 0017); the name and both dates can be corrected.
+  const started = competition !== null && !competitionPermissions(competition.status).editLocation;
 
   const handleSubmit = onSubmit(() => {
     if (!values.name.trim() || !values.date || (values.endDate && values.endDate < values.date)) return;
@@ -60,19 +59,18 @@ function CompetitionForm({ competition, onDone }: { competition: Competition | n
       </FormField>
       <div className="grid grid-cols-2 gap-4">
         <FormField id="competition-date" label="Start date" error={errors.date}>
-          <Input id="competition-date" type="date" disabled={onlyName} value={values.date} onChange={(e) => set("date", e.target.value)} />
+          <Input id="competition-date" type="date" value={values.date} onChange={(e) => set("date", e.target.value)} />
         </FormField>
         <FormField id="competition-end-date" label="End date (optional)" error={errors.endDate}>
           <Input id="competition-end-date" type="date" min={values.date} value={values.endDate ?? ""} onChange={(e) => set("endDate", e.target.value || null)} />
         </FormField>
       </div>
       <FormField id="competition-location" label="Location (optional)">
-        <Input id="competition-location" disabled={onlyName} value={values.location} onChange={(e) => set("location", e.target.value)} />
+        <Input id="competition-location" disabled={started} value={values.location} onChange={(e) => set("location", e.target.value)} />
       </FormField>
       <p className="text-xs text-muted-foreground">
-        {onlyName
-          ? "The competition has started, so its start date and location are locked."
-          : "Athlete ages for categories are counted as the start date's year minus the year of birth. Leave the end date empty for a one-day competition."}
+        Athlete ages for categories are counted as the start date's year minus the year of birth. Leave the end date empty for a one-day competition.
+        {started && " The competition has started, so its location is locked; changing the start date's year can move athletes out of their categories' age rules."}
       </p>
       <FormActions onCancel={onDone} submitLabel={competition ? "Save changes" : "Create competition"} saving={create.isPending || update.isPending} />
     </form>

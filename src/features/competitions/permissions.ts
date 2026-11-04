@@ -6,8 +6,8 @@ import type { CompetitionStatus } from "@/db/competitions";
  * would fail.
  */
 export interface CompetitionPermissions {
-  /** Start date and location: only before the start. (The name and end date can always change, see 0014 / 0015.) */
-  editDetails: boolean;
+  /** The location: only before the start. (The name and both dates can always change, see 0014, 0015 and 0017.) */
+  editLocation: boolean;
   /** Station sets, stations, categories and athletes: until the competition is finished. */
   editSetup: boolean;
   enterResults: boolean;
@@ -19,7 +19,7 @@ export interface CompetitionPermissions {
 
 export function competitionPermissions(status: CompetitionStatus): CompetitionPermissions {
   return {
-    editDetails: status === "draft",
+    editLocation: status === "draft",
     editSetup: status !== "finished",
     enterResults: status === "running",
     clearResults: status === "running",

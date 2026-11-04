@@ -1,6 +1,6 @@
 [package]
 name = "ifbb-fitness-challenge"
-version = "0.8.0"
+version = "0.9.0"
 description = "IFBB Fitness Challenge — local competition manager"
 authors = ["IFBB"]
 edition = "2021"
@@ -29,6 +29,8 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 local-ip-address = "0.6.13"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

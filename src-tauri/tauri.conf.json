@@ -24,8 +24,16 @@
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYxNTM1MEU2ODNEMEQzOTIKUldTUzA5Q0Q1bEJUOGQrYjBhNEkzV21ITm1GSm1IM3o2U1FSbjRsUW9BWGtWRWxCcmRjQ1hEK2IK",
+      "endpoints": ["https://github.com/qqrares23/ifbb-fitness-challenge/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "SportsGame",
     "shortDescription": "Local competition manager for the IFBB Fitness Challenge",

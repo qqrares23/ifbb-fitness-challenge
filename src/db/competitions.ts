@@ -62,6 +62,11 @@ export async function listCompetitions(): Promise<CompetitionSummary[]> {
   );
 }
 
+/** Whether any competition is running (results being entered right now). */
+export async function hasRunningCompetition(): Promise<boolean> {
+  return (await (await db()).select<unknown[]>("SELECT 1 FROM competitions WHERE status = 'running' LIMIT 1")).length > 0;
+}
+
 export async function getCompetitionSetup(id: number): Promise<CompetitionSetup | null> {
   const [rows, stationSets, categories, entries] = await Promise.all([
     (await db()).select<Competition[]>(`SELECT ${COLUMNS} FROM competitions WHERE id = $1`, [id]),

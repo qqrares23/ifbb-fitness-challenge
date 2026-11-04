@@ -5,6 +5,7 @@ import { BicepsFlexedIcon } from "@/components/icons/biceps-flexed";
 import { CalendarCheckIcon } from "@/components/icons/calendar-check";
 import { LayersIcon } from "@/components/icons/layers";
 import { UsersIcon } from "@/components/icons/users";
+import { AutoUpdate } from "@/features/data/AutoUpdate";
 import { Backups } from "@/features/data/Backups";
 import { DatabaseTransfer } from "@/features/data/DatabaseTransfer";
 import { HostJudging } from "@/features/data/HostJudging";
@@ -43,6 +44,7 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="grid gap-2 border-t px-3 py-3">
+          <AutoUpdate />
           <HostJudging />
           <Backups />
           <DatabaseTransfer />

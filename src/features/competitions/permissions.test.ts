@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { canChangeCategory, competitionPermissions } from "./permissions";
 
 describe("competitionPermissions", () => {
-  it("keeps the setup (stations, categories, athletes) editable while running, but not the details", () => {
-    expect(competitionPermissions("running")).toEqual({ editDetails: false, editSetup: true, enterResults: true, clearResults: true, restart: true });
+  it("keeps the setup (stations, categories, athletes) editable while running, but not the location", () => {
+    expect(competitionPermissions("running")).toEqual({ editLocation: false, editSetup: true, enterResults: true, clearResults: true, restart: true });
   });
 
   it("freezes everything once finished, except a restart", () => {

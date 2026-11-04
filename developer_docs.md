@@ -1,6 +1,6 @@
 # IFBB Fitness Challenge — Developer Documentation
 
-Version 0.8 · Tauri 2 · React 19 · TypeScript · SQLite
+Version 0.9 · Tauri 2 · React 19 · TypeScript · SQLite
 
 This document explains how the app is built and why, so that a new developer can change it safely.
 For a short user-facing overview see `README.md`.
@@ -24,8 +24,9 @@ A desktop app for running IFBB competitions **fully offline**. Organisers:
 4. **export / import the whole database** to move everything to another computer.
 
 All data lives in one SQLite file (`fitness-challenge.db`) in the OS app-data folder for the
-identifier `org.ifbb.fitnesschallenge`. There are no user accounts and nothing goes to the internet.
-The one exception to "offline" is optional: **Host judging** serves a page to phones on the local
+identifier `org.ifbb.fitnesschallenge`. There are no user accounts and no data goes to the internet.
+The exceptions to "offline": at startup the app checks GitHub for a newer version and installs it
+(skipped when offline), and the optional **Host judging** serves a page to phones on the local
 network, so judges can record results (see §5).
 
 ---
@@ -34,7 +35,7 @@ network, so judges can record results (see §5).
 
 | Concern | Choice |
 |---|---|
-| Desktop shell | Tauri 2 (Rust). Plugins: `sql` (SQLite via sqlx), `dialog`, `fs` |
+| Desktop shell | Tauri 2 (Rust). Plugins: `sql` (SQLite via sqlx), `dialog`, `fs`, `updater`, `process` |
 | UI | React 19, React Router 8 (hash router), Tailwind CSS 4, shadcn/ui (Radix primitives) |
 | Data fetching / cache | TanStack Query 5 |
 | Animation | `motion` (animated Lucide icons from lucide-animated), `tw-animate-css`, a FLIP hook |
@@ -66,7 +67,7 @@ network, so judges can record results (see §5).
 └────────┼───────────────────────────────────────────────────────────────────────┘
          │ IPC (@tauri-apps/plugin-sql, plugin-dialog, plugin-fs)
 ┌────────▼──────────────────────── Rust (src-tauri) ─────────────────────────────┐
-│  lib.rs: registers plugins + 16 SQL migrations + database transfer commands    │
+│  lib.rs: registers plugins + 17 SQL migrations + database transfer commands    │
 │  SQLite file: CHECK constraints, FKs, and TRIGGERS enforce the lifecycle rules │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -186,8 +187,20 @@ other and with import / restore.
 
 **Capabilities** (`capabilities/default.json`): `core:default`, `sql:default`, `sql:allow-execute`,
 `dialog:allow-save`, `dialog:allow-open`, `fs:allow-write-file`, `core:window:allow-maximize`, `core:window:allow-unmaximize`
-(the full-screen results table). The file dialog grants write access only to the path the user
+(the full-screen results table), `updater:default` and `process:allow-restart` (automatic updates). The file dialog grants write access only to the path the user
 picked; the database commands are the app's own and need no fs scope.
+
+**Automatic updates** (`features/data/AutoUpdate.tsx`, `plugins.updater` in `tauri.conf.json`): once per start
+the app asks `releases/latest/download/latest.json` on this repository's GitHub releases for a newer
+version. If there is one it makes a backup (the new version may migrate the database), downloads the
+update, checks its signature against `pubkey`, installs it (on Windows the NSIS `setup.exe`, in passive
+mode, which closes the app) and restarts. Offline, the check fails quietly (logged to the console). It
+runs only at startup and is skipped while a competition is running, so judging is never interrupted.
+There is no portable .exe any more: it can't update itself. CI builds a draft release and a last job
+publishes it only once `latest.json` lists every platform. Linux updates replace the AppImage only. Builds are signed with the private
+key in `~/.tauri/ifbb-fitness-challenge.key` (local builds, read by `scripts/release-windows.mjs`) and the
+`TAURI_SIGNING_PRIVATE_KEY` repository secret (CI). **If that key is lost, installed apps can't be updated
+any more**: they would need a manually installed build with a new public key.
 
 **CSP** (`tauri.conf.json`): `default-src 'self'`, with images/fonts also allowed from `data:` (the
 PDF embeds logos and fonts, and exercise photos are stored, as data URLs) and `connect-src` limited to Tauri IPC. Nothing is loaded
@@ -265,6 +278,7 @@ register it in `lib.rs` with the next `version`.
 | 14 | `0014_rename_competitions.sql` | A competition can be renamed in any state; date and location stay locked once started |
 | 15 | `0015_end_date.sql` | `competitions.end_date`: last day of a multi-day competition (NULL = one day, `>= date`); editable in any state. `date` stays the first day, ages are counted on it |
 | 16 | `0016_speed_fit_categories.sql` | `categories.kind`: the challenge type moves from the competition to the category (backfilled from the competition, so old Speed Fit competitions keep working). Reps / times triggers check the category; an entry can't move between challenges; any competition can have stations (old Speed Fit ones get "Set A" unless finished). Old Speed Fit library categories are renamed "Speed Fit · …" to match how they are named now |
+| 17 | `0017_editable_dates.sql` | The start date can be changed in any state, like the name and end date; only the location stays locked once started |
 
 ### 6.3 Competition lifecycle (enforced by triggers)
 
@@ -283,8 +297,8 @@ deletes the competition's reps / times and clears `late_entry`; the setup stays.
 
 | Action | draft | running | finished |
 |---|:-:|:-:|:-:|
-| Rename, edit end date | ✅ | ✅ | ✅ |
-| Edit start date / location | ✅ | ❌ | ❌ |
+| Rename, edit start and end date | ✅ | ✅ | ✅ |
+| Edit location | ✅ | ❌ | ❌ |
 | Station sets: add, rename, delete; stations: count and exercises (an exercise change keeps reps) | ✅ | ✅ | ❌ |
 | Add category, edit its rules, add / remove its station sets | ✅ | ✅ | ❌ |
 | Remove category (with its entries and results) | ✅ | ✅ | ❌ |
@@ -424,8 +438,8 @@ The engine has no I/O and is fully unit-tested (`engine.test.ts`).
 
 ### 7.6 Competition logic (`src/features/competitions/`)
 
-- **`permissions.ts`**: `competitionPermissions(status)` → `{ editDetails, editSetup, enterResults, clearResults, restart }`
-  (details = start date and location: draft only, the name and end date can always change; setup = station sets, stations, categories, athletes: until finished;
+- **`permissions.ts`**: `competitionPermissions(status)` → `{ editLocation, editSetup, enterResults, clearResults, restart }`
+  (location: draft only, the name and both dates can always change; setup = station sets, stations, categories, athletes: until finished;
   results and deleting them: running; restart: once started), plus `canChangeCategory`. These mirror the triggers in §6.3.
 - **`readiness.ts`**: `competitionReadiness(setup)` → `{ blocking, warnings }`, shown in
   `ReadinessCard`. **Start** and **Finish** are disabled while `blocking` is non-empty; once started, the card is
@@ -645,7 +659,8 @@ Exercise those manually in `tauri dev`.
    - Windows `.msi` and `setup.exe`;
    - Linux `.AppImage`, `.deb` and `.rpm` (built on Ubuntu 22.04 for older-distro compatibility).
 
-   The artifacts are attached to a **draft** GitHub release.
+   The artifacts, with the signed `latest.json` for automatic updates, are attached to a **published**
+   GitHub release (the repository is public, so installed apps can read it).
 4. The macOS build is unsigned, so users must right-click → **Open** on first launch.
 
 ---

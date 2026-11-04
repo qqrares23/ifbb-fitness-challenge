@@ -117,6 +117,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0016_speed_fit_categories.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 17,
+            description: "editable_dates",
+            sql: include_str!("../migrations/0017_editable_dates.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -268,6 +274,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(judge_server::JudgeServer::default())
         .setup(|app| {
             backup::start_timer(app.handle().clone());
@@ -300,6 +308,25 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dates_change_in_any_state_but_the_location_locks_at_the_start() {
+        tauri::async_runtime::block_on(async {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+            async fn run(pool: &sqlx::SqlitePool, sql: &str) -> Result<(), sqlx::Error> {
+                sqlx::raw_sql(sql).execute(pool).await.map(|_| ())
+            }
+            for migration in migrations() {
+                run(&pool, migration.sql).await.unwrap();
+            }
+            run(&pool, "INSERT INTO competitions (id, name, date, location) VALUES (1, 'Cup', '2026-01-01', 'Cluj')").await.unwrap();
+            for status in ["running", "finished"] {
+                run(&pool, &format!("UPDATE competitions SET status = '{status}' WHERE id = 1")).await.unwrap();
+                run(&pool, "UPDATE competitions SET date = '2026-02-01', end_date = '2026-02-03' WHERE id = 1").await.unwrap();
+                assert!(run(&pool, "UPDATE competitions SET location = 'Iasi' WHERE id = 1").await.is_err(), "location locked while {status}");
+            }
+        });
+    }
 
     #[test]
     fn restore_keeps_the_replaced_database_with_its_log() {

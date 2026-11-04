@@ -1,7 +1,9 @@
 name: Release
 
-# Push a tag like v0.1.0 (or run manually) to build the installers. They are attached to a
-# draft GitHub release, which stays private until you publish it.
+# Push a tag like v0.1.0 to build the installers and publish them as a GitHub release with
+# latest.json (a manual run only makes a draft), which installed apps check at startup to update
+# themselves (see the updater in src-tauri/tauri.conf.json). Updates are signed with the key in
+# the TAURI_SIGNING_PRIVATE_KEY secret; the matching public key is in tauri.conf.json.
 on:
   push:
     tags: ["v*"]
@@ -78,10 +80,34 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: v__VERSION__
           releaseName: IFBB Fitness Challenge v__VERSION__
           releaseBody: "macOS (Apple Silicon and Intel): .dmg · Windows: setup.exe or .msi · Linux: .AppImage, .deb or .rpm"
+          # A draft until every platform is in; the publish job then makes it releases/latest.
           releaseDraft: true
           prerelease: false
+          # Windows apps update with the setup.exe they were installed with, not the .msi.
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+  # Publishes the release only once every platform has built and is listed in latest.json (the
+  # build jobs merge their entries into it one by one), so installed apps never see half a release.
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: latest.json lists every platform
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern latest.json
+          for platform in windows-x86_64 darwin-aarch64 darwin-x86_64 linux-x86_64; do
+            jq -e --arg p "$platform" '.platforms[$p].url' latest.json > /dev/null || { echo "latest.json is missing $platform: re-run the failed job"; exit 1; }
+          done
+      - run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

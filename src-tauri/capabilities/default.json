@@ -13,6 +13,8 @@
     "fs:allow-write-file",
     "dialog:allow-open",
     "core:window:allow-maximize",
-    "core:window:allow-unmaximize"
+    "core:window:allow-unmaximize",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

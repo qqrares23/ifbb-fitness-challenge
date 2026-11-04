@@ -9,9 +9,16 @@ export interface Country {
   name: string;
 }
 
-export const COUNTRIES: Country[] = Object.entries(countries.getNames("en", { select: "official" }))
-  .map(([alpha2, name]) => ({ code: countries.alpha2ToAlpha3(alpha2)!, name }))
-  .sort((a, b) => a.name.localeCompare(b.name, "en"));
+/** Athletes competing under the IFBB flag instead of a country's. Not an ISO code (none uses IFB), but 3 upper-case letters as the database requires. */
+export const IFBB_FLAG: Country = { code: "IFB", name: "IFBB Flag" };
+
+/** IFBB Flag first, then every country by name. */
+export const COUNTRIES: Country[] = [
+  IFBB_FLAG,
+  ...Object.entries(countries.getNames("en", { select: "official" }))
+    .map(([alpha2, name]) => ({ code: countries.alpha2ToAlpha3(alpha2)!, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "en")),
+];
 
 const NAME_BY_CODE = new Map(COUNTRIES.map((c) => [c.code, c.name]));
 
