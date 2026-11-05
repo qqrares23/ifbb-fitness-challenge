@@ -15,6 +15,13 @@ import { OverallTable } from "./OverallTable";
 import { RepsGrid } from "./RepsGrid";
 import { TimesTable } from "./TimesTable";
 
+// Tab bars that wrap onto several rows when a competition has many categories or levels. The tab
+// list is fixed at h-8 (a group variant, so a plain h-auto loses): `!` lets it grow, and each tab
+// keeps its own height with space between rows (the line variant's underline sits 5px below a tab).
+const WRAPPING_LIST = "h-auto! flex-wrap justify-start gap-x-1 gap-y-1.5 p-1";
+const WRAPPING_LINE_LIST = "h-auto! flex-wrap justify-start gap-x-2 gap-y-3 pb-2";
+const WRAPPING_TAB = "h-8! flex-none px-3";
+
 interface ResultsPanelProps {
   setup: CompetitionSetup;
   results: CompetitionResults;
@@ -63,9 +70,9 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
   return (
     <div className="grid gap-4">
       <Tabs value={currentSubgroup.key} onValueChange={openSubgroup}>
-        <TabsList variant="line" className="h-auto flex-wrap justify-start">
+        <TabsList variant="line" className={WRAPPING_LINE_LIST}>
           {subgroups.map(({ key, label, categoryIndexes }) => (
-            <TabsTrigger key={key} value={key} className="flex-none">
+            <TabsTrigger key={key} value={key} className={WRAPPING_TAB}>
               {subgroupDone(categoryIndexes) && <CircleCheck className="text-emerald-600" />}
               {label}
             </TabsTrigger>
@@ -76,11 +83,11 @@ export function ResultsPanel({ setup, results, editable }: ResultsPanelProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         {currentSubgroup.categoryIndexes.length > 1 || current.category.level ? (
           <Tabs value={String(current.category.id)} onValueChange={(value) => setCategoryId(Number(value))}>
-            <TabsList className="h-auto flex-wrap">
+            <TabsList className={WRAPPING_LIST}>
               {currentSubgroup.categoryIndexes.map((i) => {
                 const { category, missingResults } = categories[i]!;
                 return (
-                  <TabsTrigger key={category.id} value={String(category.id)} className="flex-none px-3">
+                  <TabsTrigger key={category.id} value={String(category.id)} className={WRAPPING_TAB}>
                     {isDone(i) && <CircleCheck className="text-emerald-600" />}
                     {category.level || "No level"}
                     {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
@@ -172,14 +179,14 @@ function FitnessChallengeTables({ competitionId, standings, editable, part, onPa
     <div className="grid gap-3">
       {sets.length > 1 && (
         <Tabs value={overall ? "overall" : String(set.stationSet.id)} onValueChange={onPartChange}>
-          <TabsList className="h-auto flex-wrap">
+          <TabsList className={WRAPPING_LIST}>
             {sets.map(({ stationSet, missingResults }) => (
-              <TabsTrigger key={stationSet.id} value={String(stationSet.id)} className="flex-none px-3">
+              <TabsTrigger key={stationSet.id} value={String(stationSet.id)} className={WRAPPING_TAB}>
                 {stationSet.name}
                 {missingResults > 0 && <span className="text-xs text-muted-foreground">({missingResults} missing)</span>}
               </TabsTrigger>
             ))}
-            <TabsTrigger value="overall" className="flex-none px-3 font-semibold">
+            <TabsTrigger value="overall" className={cn(WRAPPING_TAB, "font-semibold")}>
               Overall
             </TabsTrigger>
           </TabsList>
